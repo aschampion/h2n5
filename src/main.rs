@@ -145,6 +145,9 @@ where n5::VecDataBlock<T>: n5::ReadableDataBlock + n5::WriteableDataBlock,
     let mut size = vec![1i64; data_attrs.get_dimensions().len()];
     size[spec.slicing_dims.plane_dims[0] as usize] = i64::from(spec.tile_size[0]);
     size[spec.slicing_dims.plane_dims[1] as usize] = i64::from(spec.tile_size[1]);
+    if let Some(dim) = spec.slicing_dims.channel_dim {
+        size[dim as usize] = data_attrs.get_dimensions()[dim as usize];
+    }
     let bbox = n5::BoundingBox::new(
         spec.coordinates.iter().map(|n| *n as i64).collect(),
         size,
@@ -155,6 +158,16 @@ where n5::VecDataBlock<T>: n5::ReadableDataBlock + n5::WriteableDataBlock,
         &spec.n5_dataset,
         data_attrs,
         &bbox)?;
+
+    let image_color_type = match spec.slicing_dims.channel_dim {
+        Some(_dim) => {
+            // TODO: match RGB/RGBA based on dimensions of dim.
+            // Permute slab so that channels dimension is at end.
+            unimplemented!()
+        },
+        None => image::ColorType::Gray(8 * std::mem::size_of::<T>() as u8),
+    };
+
     let data = slab.into_raw_vec();
 
     // Get the image data as a byte slice.
@@ -171,7 +184,7 @@ where n5::VecDataBlock<T>: n5::ReadableDataBlock + n5::WriteableDataBlock,
                 bytes,
                 spec.tile_size[0],
                 spec.tile_size[1],
-                image::ColorType::Gray(8 * std::mem::size_of::<T>() as u8)).expect("TODO: encoding");
+                image_color_type).expect("TODO: encoding");
         },
         EncodingFormat::Png => {
             let mut encoder = image::png::PNGEncoder::new(writer);
@@ -179,7 +192,7 @@ where n5::VecDataBlock<T>: n5::ReadableDataBlock + n5::WriteableDataBlock,
                 bytes,
                 spec.tile_size[0],
                 spec.tile_size[1],
-                image::ColorType::Gray(8 * std::mem::size_of::<T>() as u8)).expect("TODO: encoding");
+                image_color_type).expect("TODO: encoding");
         }
     }
     Ok(())
