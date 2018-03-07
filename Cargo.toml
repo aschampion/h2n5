@@ -8,4 +8,8 @@ actix-web = "0.4"
 image = "0.18"
 n5 = "0.1"
 ndarray = "0.11"
+num-traits = "0.2"
 regex = "*"
+
+[patch.crates-io]
+n5 = { path = "../n5" }
