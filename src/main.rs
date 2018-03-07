@@ -115,14 +115,12 @@ impl FromStr for TileSpec {
 fn tile(req: HttpRequest) -> Result<HttpResponse> {
     let spec = TileSpec::from_str(&req.match_info()["spec"]).expect("TODO");
 
-    let n = N5Filesystem::open(".").expect("TODO: n5 failed");
-    let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)
-        .expect("TODO: dataset does not exist");
+    let n = N5Filesystem::open(".")?;
+    let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
     let mut tile_buffer: Vec<u8> = Vec::with_capacity(DEFAULT_TILE_BUFFER);
 
     match *data_attrs.get_data_type() {
-        DataType::UINT8 => read_and_encode::<u8, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)
-            .expect("TODO: read failed"),
+        DataType::UINT8 => read_and_encode::<u8, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
         _ => (),
     }
     Ok(HttpResponse::Ok()
