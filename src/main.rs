@@ -137,8 +137,8 @@ fn read_and_encode<T, N: N5Reader, W: Write>(
     spec: &TileSpec,
     writer: &mut W,
 ) -> Result<(), std::io::Error>
-where n5::VecDataBlock<T>: n5::ReadableDataBlock + n5::WriteableDataBlock,
-      DataType: n5::DataBlockCreator<std::vec::Vec<T>>,
+where n5::VecDataBlock<T>: n5::DataBlock<T>,
+      DataType: n5::DataBlockCreator<T>,
       T: Clone + num_traits::identities::Zero {
 
     // Express the spec tile as an N-dim bounding box.
