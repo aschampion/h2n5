@@ -23,9 +23,6 @@ use n5::filesystem::{
 use actix_web::*;
 
 
-const DEFAULT_TILE_BUFFER: usize = 2_000_000;
-
-
 #[derive(Debug, PartialEq)]
 struct SlicingDims {
     plane_dims: [u32; 2],
@@ -117,7 +114,12 @@ fn tile(req: HttpRequest) -> Result<HttpResponse> {
 
     let n = N5Filesystem::open(".")?;
     let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
-    let mut tile_buffer: Vec<u8> = Vec::with_capacity(DEFAULT_TILE_BUFFER);
+    // Allocate a buffer large enough for the uncompressed tile, as the
+    // compressed size will be less with high probability.
+    let buffer_size = spec.tile_size[0] as usize * spec.tile_size[1] as usize
+        * spec.slicing_dims.channel_dim.map(|d| data_attrs.get_dimensions()[d as usize] as usize).unwrap_or(1)
+        * data_attrs.get_data_type().size_of();
+    let mut tile_buffer: Vec<u8> = Vec::with_capacity(buffer_size);
 
     match *data_attrs.get_data_type() {
         DataType::UINT8 => read_and_encode::<u8, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
