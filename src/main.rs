@@ -4,13 +4,16 @@ extern crate n5;
 extern crate ndarray;
 extern crate num_traits;
 extern crate regex;
-
+#[macro_use]
+extern crate structopt;
 
 use std::io::{
     Write,
 };
+use std::path::PathBuf;
 use std::str::FromStr;
 
+use actix_web::*;
 use n5::{
     DatasetAttributes,
     DataType,
@@ -19,8 +22,7 @@ use n5::{
 use n5::filesystem::{
     N5Filesystem,
 };
-
-use actix_web::*;
+use structopt::StructOpt;
 
 
 #[derive(Debug, PartialEq)]
@@ -109,10 +111,10 @@ impl FromStr for TileSpec {
 
 #[allow(unknown_lints)]
 #[allow(needless_pass_by_value)]
-fn tile(req: HttpRequest) -> Result<HttpResponse> {
+fn tile(req: HttpRequest<Options>) -> Result<HttpResponse> {
     let spec = TileSpec::from_str(&req.match_info()["spec"]).expect("TODO");
 
-    let n = N5Filesystem::open(".")?;
+    let n = N5Filesystem::open(req.state().root_path.to_str().expect("TODO: path not unicode?"))?;
     let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
     // Allocate a buffer large enough for the uncompressed tile, as the
     // compressed size will be less with high probability.
@@ -200,9 +202,18 @@ where n5::VecDataBlock<T>: n5::DataBlock<T>,
     Ok(())
 }
 
+/// Command line options.
+#[derive(StructOpt, Debug, Clone)]
+#[structopt(name = "basic")]
+struct Options {
+    /// N5 root path
+    #[structopt(name = "N5_ROOT_PATH", parse(from_os_str), default_value = ".")]
+    root_path: PathBuf,
+}
+
 fn main() {
     HttpServer::new(
-        || Application::new()
+        || Application::with_state(Options::from_args())
             .resource("/tile/{spec:.*}", |r| r.f(tile)))
         .bind("127.0.0.1:8088").unwrap()
         .run();
