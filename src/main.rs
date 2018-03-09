@@ -202,20 +202,32 @@ where n5::VecDataBlock<T>: n5::DataBlock<T>,
     Ok(())
 }
 
-/// Command line options.
+/// Serve N5 datasets over HTTP as tiled image stacks.
+///
+/// Configuration options.
 #[derive(StructOpt, Debug, Clone)]
-#[structopt(name = "basic")]
+#[structopt(name = "h2n5")]
 struct Options {
+    /// Bind address
+    #[structopt(short = "b", long = "bind-address", default_value = "127.0.0.1")]
+    bind_address: std::net::IpAddr,
+
+    /// Bind port
+    #[structopt(short = "p", long = "port", default_value = "8088")]
+    port: u16,
+
     /// N5 root path
     #[structopt(name = "N5_ROOT_PATH", parse(from_os_str), default_value = ".")]
     root_path: PathBuf,
 }
 
 fn main() {
+    let opt = Options::from_args();
+
     HttpServer::new(
         || Application::with_state(Options::from_args())
             .resource("/tile/{spec:.*}", |r| r.f(tile)))
-        .bind("127.0.0.1:8088").unwrap()
+        .bind(format!("{}:{}", opt.bind_address, opt.port)).unwrap()
         .run();
 }
 
