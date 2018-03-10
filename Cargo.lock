@@ -639,12 +639,12 @@ dependencies = [
 [[package]]
 name = "image"
 version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "byteorder 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "enum_primitive 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "gif 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "jpeg-decoder 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lzw 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-iter 0.1.35 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-rational 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-traits 0.1.43 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -924,7 +924,7 @@ dependencies = [
 [[package]]
 name = "n5"
 version = "0.1.0"
-source = "git+https://github.com/aschampion/rust-n5#eed103d316fd2480bfa69a365e764c5f4ca6972a"
+source = "git+https://github.com/aschampion/rust-n5#7597ebf01678c91e0315b3b9828c2ef8ef347a29"
 dependencies = [
  "byteorder 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "bzip2 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",

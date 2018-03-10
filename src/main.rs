@@ -199,7 +199,12 @@ where n5::VecDataBlock<T>: n5::DataBlock<T>,
         None => image::ColorType::Gray(8 * std::mem::size_of::<T>() as u8),
     };
 
-    let data = slab.into_raw_vec();
+    let data = if spec.slicing_dims.plane_dims[0] > spec.slicing_dims.plane_dims[1] {
+        // Note, this works correctly because the slab is f-order.
+        slab.into_iter().cloned().collect()
+    } else {
+        slab.into_raw_vec()
+    };
 
     // Get the image data as a byte slice.
     let bytes: &[u8] = unsafe {
