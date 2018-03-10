@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use actix_web::*;
+use actix_web::dev::Params;
 use n5::{
     DatasetAttributes,
     DataType,
@@ -31,6 +32,10 @@ struct SlicingDims {
     channel_dim: Option<u32>,
 }
 
+trait QueryConfigurable {
+    fn configure<'a>(&mut self, params: &'a Params<'a>);
+}
+
 #[derive(Debug, PartialEq)]
 struct JpegParameters {
     quality: u8,
@@ -40,6 +45,14 @@ impl Default for JpegParameters {
     fn default() -> JpegParameters {
         JpegParameters {
             quality: 100,
+        }
+    }
+}
+
+impl QueryConfigurable for JpegParameters {
+    fn configure<'a>(&mut self, params: &'a Params<'a>) {
+        if let Ok(q) = params.query::<u8>("q") {
+            self.quality = q;
         }
     }
 }
@@ -58,6 +71,15 @@ impl FromStr for EncodingFormat {
             "jpg" | "jpeg" => Ok(EncodingFormat::Jpeg(JpegParameters::default())),
             "png" => Ok(EncodingFormat::Png),
             _ => Err(()),
+        }
+    }
+}
+
+impl QueryConfigurable for EncodingFormat {
+    fn configure<'a>(&mut self, params: &'a Params<'a>) {
+        match *self {
+            EncodingFormat::Jpeg(ref mut p) => p.configure(params),
+            _ => (),
         }
     }
 }
@@ -112,7 +134,11 @@ impl FromStr for TileSpec {
 #[allow(unknown_lints)]
 #[allow(needless_pass_by_value)]
 fn tile(req: HttpRequest<Options>) -> Result<HttpResponse> {
-    let spec = TileSpec::from_str(&req.match_info()["spec"]).expect("TODO");
+    let spec = {
+        let mut spec = TileSpec::from_str(&req.match_info()["spec"]).expect("TODO");
+        spec.format.configure(req.query());
+        spec
+    };
 
     let n = N5Filesystem::open(req.state().root_path.to_str().expect("TODO: path not unicode?"))?;
     let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
