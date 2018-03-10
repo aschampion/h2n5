@@ -1,6 +1,9 @@
 # H2N5 [![Build Status](https://travis-ci.org/aschampion/h2n5.svg?branch=master)](https://travis-ci.org/aschampion/h2n5)
 
-HTTP 2 N5: Serve N5 datasets over HTTP as tiled image stacks.
+H2N5 is:
+- ~~An Australian strain of avian flu~~
+- ~~[(E)-Hydrazinylidenehydrazinylidene]azanide~~
+- HTTP 2 N5: A simple program to serve N5 datasets over HTTP as tiled image stacks
 
 ## Quick start
 
@@ -27,7 +30,7 @@ Will slice a 512 px by 256 px tile from the `group/dataset` dataset along axes `
 ## Notes
 
 - PNG (`png`) and JPEG (`jpg`|`jpeg`) encoding formats are supported.
-- Currently, only `UINT8` and `UINT16` N5 data types are supported.
+- Currently, only `UINT8` and `UINT16` (PNG only) N5 data types are supported.
 - Currently, only grayscale tiles are returned (by slicing remaining dimensions as singletons). Slicing a third dimension for RGB(A) channels (e.g., `slicing_dims` as `0_1_4`) will be supported, and is currently parsed correctly, but not yet implemented for tile encoding.
 
 ## License
