@@ -151,7 +151,9 @@ fn tile(req: HttpRequest<Options>) -> Result<HttpResponse> {
 
     match *data_attrs.get_data_type() {
         DataType::UINT8 => read_and_encode::<u8, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
-        _ => (),
+        DataType::UINT16 => read_and_encode::<u16, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
+        _ => return Ok(httpcodes::HttpNotImplemented.with_reason(
+                "Data type does not have an image renderer implemented")),
     }
     Ok(HttpResponse::Ok()
         .content_type("image/jpeg")
@@ -159,7 +161,6 @@ fn tile(req: HttpRequest<Options>) -> Result<HttpResponse> {
         .unwrap())
 }
 
-// TODO: u8 only.
 // TODO: Single channel only.
 fn read_and_encode<T, N: N5Reader, W: Write>(
     n: &N,
