@@ -1,16 +1,19 @@
 [package]
 name = "h2n5"
 version = "0.1.0"
+license = "MIT/Apache-2.0"
 authors = ["Andrew Champion <andrew.champion@gmail.com>"]
+description = "HTTP 2 N5: Serve N5 datasets over HTTP as tiled image stacks"
+readme = "README.md"
+repository = "https://github.com/aschampion/h2n5"
+keywords = ["n5"]
+categories = ["command-line-utilities", "science"]
 
 [dependencies]
 actix-web = "0.4"
 image = "0.18"
-n5 = "0.1"
+n5 = "0.2"
 ndarray = "0.11"
 num-traits = "0.2"
 regex = "*"
 structopt = "0.2"
-
-[patch.crates-io]
-n5 = { git = "https://github.com/aschampion/rust-n5" }
