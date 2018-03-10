@@ -248,6 +248,11 @@ struct Options {
     #[structopt(short = "p", long = "port", default_value = "8088")]
     port: u16,
 
+    /// Number of threads for handling requests.
+    /// By default, the number of CPU cores is used.
+    #[structopt(short = "t", long = "threads")]
+    threads: Option<usize>,
+
     /// N5 root path
     #[structopt(name = "N5_ROOT_PATH", parse(from_os_str), default_value = ".")]
     root_path: PathBuf,
@@ -256,11 +261,12 @@ struct Options {
 fn main() {
     let opt = Options::from_args();
 
-    HttpServer::new(
+    let mut server = HttpServer::new(
         || Application::with_state(Options::from_args())
             .resource("/tile/{spec:.*}", |r| r.f(tile)))
-        .bind(format!("{}:{}", opt.bind_address, opt.port)).unwrap()
-        .run();
+        .bind(format!("{}:{}", opt.bind_address, opt.port)).unwrap();
+    if let Some(threads) = opt.threads { server = server.threads(threads); }
+    server.run();
 }
 
 #[cfg(test)]
