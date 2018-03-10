@@ -76,6 +76,8 @@ impl FromStr for EncodingFormat {
 }
 
 impl QueryConfigurable for EncodingFormat {
+    #[allow(unknown_lints)]
+    #[allow(single_match)]
     fn configure<'a>(&mut self, params: &'a Params<'a>) {
         match *self {
             EncodingFormat::Jpeg(ref mut p) => p.configure(params),
