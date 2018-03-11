@@ -32,6 +32,7 @@ struct SlicingDims {
     channel_dim: Option<u32>,
 }
 
+/// Trait for types that can be configured by URL query string parameters.
 trait QueryConfigurable {
     fn configure<'a>(&mut self, params: &'a Params<'a>);
 }
@@ -61,6 +62,35 @@ impl QueryConfigurable for JpegParameters {
 enum EncodingFormat {
     Jpeg(JpegParameters),
     Png,
+}
+
+impl EncodingFormat {
+    fn encode<W: Write>(
+        &self,
+        writer: &mut W,
+        bytes: &[u8],
+        tile_size: &[u32; 2],
+        image_color_type: image::ColorType,
+    ) -> Result<(), std::io::Error> {
+        match *self {
+            EncodingFormat::Jpeg(ref p) => {
+                let mut encoder = image::jpeg::JPEGEncoder::new_with_quality(writer, p.quality);
+                encoder.encode(
+                    bytes,
+                    tile_size[0],
+                    tile_size[1],
+                    image_color_type)
+            },
+            EncodingFormat::Png => {
+                let mut encoder = image::png::PNGEncoder::new(writer);
+                encoder.encode(
+                    bytes,
+                    tile_size[0],
+                    tile_size[1],
+                    image_color_type)
+            }
+        }
+    }
 }
 
 impl FromStr for EncodingFormat {
@@ -215,24 +245,9 @@ where n5::VecDataBlock<T>: n5::DataBlock<T>,
             data.len() * std::mem::size_of::<T>())
     };
 
-    match spec.format {
-        EncodingFormat::Jpeg(ref p) => {
-            let mut encoder = image::jpeg::JPEGEncoder::new_with_quality(writer, p.quality);
-            encoder.encode(
-                bytes,
-                spec.tile_size[0],
-                spec.tile_size[1],
-                image_color_type).expect("TODO: encoding");
-        },
-        EncodingFormat::Png => {
-            let mut encoder = image::png::PNGEncoder::new(writer);
-            encoder.encode(
-                bytes,
-                spec.tile_size[0],
-                spec.tile_size[1],
-                image_color_type).expect("TODO: encoding");
-        }
-    }
+    spec.format.encode(writer, bytes, &spec.tile_size, image_color_type)
+        .expect("TODO: encoding");
+
     Ok(())
 }
 
