@@ -92,6 +92,13 @@ impl EncodingFormat {
             }
         }
     }
+
+    fn content_type(&self) -> &'static str {
+        match *self {
+            EncodingFormat::Jpeg(_) => "image/jpeg",
+            EncodingFormat::Png => "image/png",
+        }
+    }
 }
 
 impl FromStr for EncodingFormat {
@@ -189,7 +196,7 @@ fn tile(req: HttpRequest<Options>) -> Result<HttpResponse> {
                 "Data type does not have an image renderer implemented")),
     }
     Ok(HttpResponse::Ok()
-        .content_type("image/jpeg")
+        .content_type(spec.format.content_type())
         .body(tile_buffer)
         .unwrap())
 }
