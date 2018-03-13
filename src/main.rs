@@ -15,6 +15,7 @@ use std::str::FromStr;
 
 use actix_web::*;
 use actix_web::dev::Params;
+use actix_web::middleware::cors;
 use n5::{
     DatasetAttributes,
     DataType,
@@ -270,6 +271,15 @@ struct Options {
     #[structopt(short = "t", long = "threads")]
     threads: Option<usize>,
 
+    /// Allow wildcard cross-origin requests (CORS).
+    ///
+    /// This does not yet configure specific allowed origins,
+    /// only a wildcard accept. This is most useful for
+    /// development purposes. For specific CORS policies, proxy
+    /// behind another HTTP server.
+    #[structopt(short = "c", long = "cors")]
+    cors: bool,
+
     /// N5 root path
     #[structopt(name = "N5_ROOT_PATH", parse(from_os_str), default_value = ".")]
     root_path: PathBuf,
@@ -279,8 +289,17 @@ fn main() {
     let opt = Options::from_args();
 
     let mut server = HttpServer::new(
-        || Application::with_state(Options::from_args())
-            .resource("/tile/{spec:.*}", |r| r.f(tile)))
+        || {
+            let opt = Options::from_args();
+            let mut app = Application::with_state(opt.clone())
+                .resource("/tile/{spec:.*}", |r| r.f(tile));
+            if opt.cors {
+                app = app.middleware(cors::Cors::build()
+                    .send_wildcard()
+                    .finish().expect("Can not create CORS middleware"));
+            }
+            app
+        })
         .bind(format!("{}:{}", opt.bind_address, opt.port)).unwrap();
     if let Some(threads) = opt.threads { server = server.threads(threads); }
     server.run();
