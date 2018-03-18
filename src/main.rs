@@ -125,6 +125,48 @@ impl QueryConfigurable for EncodingFormat {
 }
 
 #[derive(Debug)]
+enum TileSpecError {
+    InvalidValue(std::num::ParseIntError),
+    MalformedPath,
+    UnknownEncodingFormat,
+}
+
+impl std::fmt::Display for TileSpecError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use std::error::Error;
+        match *self {
+            TileSpecError::InvalidValue(ref e) => write!(f, "{}: {}", self.description(), e),
+            _ => write!(f, "{}", self.description()),
+        }
+    }
+}
+
+impl std::error::Error for TileSpecError {
+    fn description(&self) -> &str {
+        match *self {
+            TileSpecError::InvalidValue(_) => "Invalid value for tiling parameter",
+            TileSpecError::MalformedPath => "Tiling request path was malformed",
+            TileSpecError::UnknownEncodingFormat => "Unknown encoding format",
+        }
+    }
+}
+
+impl From<std::num::ParseIntError> for TileSpecError {
+    fn from(e: std::num::ParseIntError) -> TileSpecError {
+        TileSpecError::InvalidValue(e)
+    }
+}
+
+impl ResponseError for TileSpecError {
+    fn error_response(&self) -> HttpResponse {
+        match *self {
+            _ => HttpResponse::build(StatusCode::BAD_REQUEST)
+                    .body(self.to_string()).unwrap(),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct TileSpec {
     n5_dataset: String,
     slicing_dims: SlicingDims,
@@ -135,38 +177,48 @@ struct TileSpec {
 
 impl FromStr for TileSpec {
 
-    type Err = ();
+    type Err = TileSpecError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let re = regex::Regex::new(r"^(?P<dataset>.*)/(?P<slicing>\d+_\d+(_\d+)?)/(?P<tile_size>\d+_\d+)(?P<coords>(/\d+)+)\.(?P<format>.+)$")
-            .expect("TODO: Regex invalid");
-        let caps = re.captures(s).expect("TODO: Regex did not match");
+            .expect("Impossible: regex is valid");
+        let caps = re.captures(s).ok_or(TileSpecError::MalformedPath)?;
 
         let n5_dataset = caps.name("dataset").unwrap().as_str().into();
         let mut sd_vals = caps.name("slicing").unwrap().as_str().split('_')
-            .map(|n| u32::from_str(n).expect("TODO1"));
+            .map(u32::from_str);
 
         let slicing_dims = SlicingDims {
-            plane_dims: [sd_vals.next().unwrap(), sd_vals.next().unwrap()],
-            channel_dim: sd_vals.next(),
+            plane_dims: [
+                sd_vals.next().unwrap()?,
+                sd_vals.next().unwrap()?,
+            ],
+            // TODO: ugly because `transpose` is not stable.
+            channel_dim: sd_vals.next().map_or(Ok(None), |v| v.map(Some))?,
         };
 
         let mut ts_vals = caps.name("tile_size").unwrap().as_str().split('_')
-            .map(|n| u32::from_str(n).expect("TODO2"));
+            .map(u32::from_str);
 
-        let tile_size = [ts_vals.next().unwrap(), ts_vals.next().unwrap()];
+        let tile_size = [
+            ts_vals.next().unwrap()?,
+            ts_vals.next().unwrap()?,
+        ];
 
         let coordinates = caps.name("coords").unwrap().as_str().split('/')
             .filter(|n| !str::is_empty(*n))
-            .map(|n| u64::from_str(n).expect("TODO3"))
-            .collect();
+            .map(u64::from_str)
+            .collect::<Result<Vec<u64>, _>>()?;
+
+        let format = EncodingFormat::from_str(caps.name("format").unwrap().as_str())
+            .map_err(|_| TileSpecError::UnknownEncodingFormat)?;
 
         Ok(TileSpec {
             n5_dataset,
             slicing_dims,
             tile_size,
             coordinates,
-            format: EncodingFormat::from_str(caps.name("format").unwrap().as_str())?,
+            format,
         })
     }
 }
@@ -175,7 +227,7 @@ impl FromStr for TileSpec {
 #[allow(needless_pass_by_value)]
 fn tile(req: HttpRequest<Options>) -> Result<HttpResponse> {
     let spec = {
-        let mut spec = TileSpec::from_str(&req.match_info()["spec"]).expect("TODO");
+        let mut spec = TileSpec::from_str(&req.match_info()["spec"])?;
         spec.format.configure(req.query());
         spec
     };
