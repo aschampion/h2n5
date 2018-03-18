@@ -232,7 +232,9 @@ fn tile(req: HttpRequest<Options>) -> Result<HttpResponse> {
         spec
     };
 
-    let n = N5Filesystem::open(req.state().root_path.to_str().expect("TODO: path not unicode?"))?;
+    let root_path = req.state().root_path.to_str()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Paths must be UTF-8"))?;
+    let n = N5Filesystem::open(root_path)?;
     let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
     // Allocate a buffer large enough for the uncompressed tile, as the
     // compressed size will be less with high probability.
