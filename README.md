@@ -27,6 +27,12 @@ http://127.0.0.1:8088/tile/group/dataset/0_1/512_256/1/2/3.jpg?q=80
 
 Will slice a 512 px by 256 px tile from the `group/dataset` dataset along axes `0` (as tile X) and `1` (as tile Y), respectively. The returned tile will start at voxel coordinates [1, 2, 3], be encoded as JPEG, with a quality of 80.
 
+For more options, see the command line help:
+
+```
+h2n5 -h
+```
+
 ## Notes
 
 - PNG (`png`) and JPEG (`jpg`|`jpeg`) encoding formats are supported.
