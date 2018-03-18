@@ -180,7 +180,9 @@ impl FromStr for TileSpec {
     type Err = TileSpecError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let re = regex::Regex::new(r"^(?P<dataset>.*)/(?P<slicing>\d+_\d+(_\d+)?)/(?P<tile_size>\d+_\d+)(?P<coords>(/\d+)+)\.(?P<format>.+)$")
+        let re = regex::Regex::new(concat!(
+                r"^(?P<dataset>.*)/(?P<slicing>\d+_\d+(_\d+)?)/",
+                r"(?P<tile_size>\d+_\d+)(?P<coords>(/\d+)+)\.(?P<format>.+)$"))
             .expect("Impossible: regex is valid");
         let caps = re.captures(s).ok_or(TileSpecError::MalformedPath)?;
 
