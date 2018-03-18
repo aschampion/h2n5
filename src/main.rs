@@ -306,9 +306,6 @@ where n5::VecDataBlock<T>: n5::DataBlock<T>,
     };
 
     spec.format.encode(writer, bytes, &spec.tile_size, image_color_type)
-        .expect("TODO: encoding");
-
-    Ok(())
 }
 
 /// Serve N5 datasets over HTTP as tiled image stacks.
