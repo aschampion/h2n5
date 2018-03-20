@@ -305,7 +305,7 @@ where n5::VecDataBlock<T>: n5::DataBlock<T>,
     // Get the image data as a byte slice.
     let bytes: &[u8] = unsafe {
         std::slice::from_raw_parts(
-            &data[..] as *const [T] as *const u8,
+            data.as_ref() as *const [T] as *const u8,
             data.len() * std::mem::size_of::<T>())
     };
 
