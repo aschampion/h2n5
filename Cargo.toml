@@ -1,8 +1,11 @@
 [package]
 name = "h2n5"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT/Apache-2.0"
-authors = ["Andrew Champion <andrew.champion@gmail.com>"]
+authors = [
+	"Andrew Champion <andrew.champion@gmail.com>",
+	"Chris Barnes <barnesc@janelia.hhmi.org>",
+]
 description = "HTTP 2 N5: Serve N5 datasets over HTTP as tiled image stacks"
 readme = "README.md"
 repository = "https://github.com/aschampion/h2n5"
@@ -11,7 +14,7 @@ categories = ["command-line-utilities", "science"]
 
 [dependencies]
 actix-web = "0.4"
-image = "0.18"
+image = "0.19"
 n5 = "0.2"
 ndarray = "0.11"
 num-traits = "0.2"
