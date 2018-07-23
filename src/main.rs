@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::io::{
     Write,
 };
+use std::num::ParseIntError;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -70,7 +71,7 @@ impl EncodingFormat {
         &self,
         writer: &mut W,
         bytes: &[u8],
-        tile_size: [u32; 2],
+        tile_size: &TileSize,
         image_color_type: image::ColorType,
     ) -> Result<(), std::io::Error> {
         match *self {
@@ -78,16 +79,16 @@ impl EncodingFormat {
                 let mut encoder = image::jpeg::JPEGEncoder::new_with_quality(writer, p.quality);
                 encoder.encode(
                     bytes,
-                    tile_size[0],
-                    tile_size[1],
+                    tile_size.w,
+                    tile_size.h,
                     image_color_type)
             },
             EncodingFormat::Png => {
                 let mut encoder = image::png::PNGEncoder::new(writer);
                 encoder.encode(
                     bytes,
-                    tile_size[0],
-                    tile_size[1],
+                    tile_size.w,
+                    tile_size.h,
                     image_color_type)
             }
         }
@@ -166,11 +167,36 @@ impl ResponseError for TileSpecError {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct TileSize {
+    w: u32,
+    h: u32,
+}
+
+impl FromStr for TileSize {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let coords: Vec<&str> = s.split(',').collect();
+
+        let w = coords[0].parse::<u32>()?;
+        let h = coords[1].parse::<u32>()?;
+
+        Ok(TileSize {w, h})
+    }
+}
+
+impl std::fmt::Display for TileSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{},{}", self.w, self.h)
+    }
+}
+
 #[derive(Debug)]
 struct TileSpec {
     n5_dataset: String,
     slicing_dims: SlicingDims,
-    tile_size: [u32; 2],
+    tile_size: TileSize,
     coordinates: Vec<u64>,
     format: EncodingFormat,
 }
@@ -202,10 +228,10 @@ impl FromStr for TileSpec {
         let mut ts_vals = caps.name("tile_size").unwrap().as_str().split('_')
             .map(u32::from_str);
 
-        let tile_size = [
-            ts_vals.next().unwrap()?,
-            ts_vals.next().unwrap()?,
-        ];
+        let tile_size = TileSize {
+            w: ts_vals.next().unwrap()?,
+            h: ts_vals.next().unwrap()?,
+        };
 
         let coordinates = caps.name("coords").unwrap().as_str().split('/')
             .filter(|n| !str::is_empty(*n))
@@ -234,13 +260,20 @@ fn tile(req: &HttpRequest<Options>) -> Result<HttpResponse> {
         spec
     };
 
+    if spec.tile_size.w > req.state().max_tile_size.w ||
+       spec.tile_size.h > req.state().max_tile_size.h {
+        return Ok(HttpResponse::BadRequest()
+            .reason("Maximum tile size exceeded")
+            .finish());
+    }
+
     let root_path = req.state().root_path.to_str()
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Paths must be UTF-8"))?;
     let n = N5Filesystem::open(root_path)?;
     let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
     // Allocate a buffer large enough for the uncompressed tile, as the
     // compressed size will be less with high probability.
-    let buffer_size = spec.tile_size[0] as usize * spec.tile_size[1] as usize
+    let buffer_size = spec.tile_size.w as usize * spec.tile_size.h as usize
         * spec.slicing_dims.channel_dim.map(|d| data_attrs.get_dimensions()[d as usize] as usize).unwrap_or(1)
         * data_attrs.get_data_type().size_of();
     let mut tile_buffer: Vec<u8> = Vec::with_capacity(buffer_size);
@@ -270,8 +303,8 @@ where n5::VecDataBlock<T>: n5::DataBlock<T>,
 
     // Express the spec tile as an N-dim bounding box.
     let mut size = vec![1i64; data_attrs.get_dimensions().len()];
-    size[spec.slicing_dims.plane_dims[0] as usize] = i64::from(spec.tile_size[0]);
-    size[spec.slicing_dims.plane_dims[1] as usize] = i64::from(spec.tile_size[1]);
+    size[spec.slicing_dims.plane_dims[0] as usize] = i64::from(spec.tile_size.w);
+    size[spec.slicing_dims.plane_dims[1] as usize] = i64::from(spec.tile_size.h);
     if let Some(dim) = spec.slicing_dims.channel_dim {
         size[dim as usize] = data_attrs.get_dimensions()[dim as usize];
     }
@@ -309,7 +342,7 @@ where n5::VecDataBlock<T>: n5::DataBlock<T>,
             data.len() * std::mem::size_of::<T>())
     };
 
-    spec.format.encode(writer, bytes, spec.tile_size, image_color_type)
+    spec.format.encode(writer, bytes, &spec.tile_size, image_color_type)
 }
 
 /// Serve N5 datasets over HTTP as tiled image stacks.
@@ -343,6 +376,10 @@ struct Options {
     /// N5 root path
     #[structopt(name = "N5_ROOT_PATH", parse(from_os_str), default_value = ".")]
     root_path: PathBuf,
+
+    /// Maximum tile size
+    #[structopt(long = "max-tile-size", default_value = "4096,4096")]
+    max_tile_size: TileSize,
 }
 
 fn main() {
@@ -378,7 +415,7 @@ mod tests {
             plane_dims: [0u32, 1],
             channel_dim: None,
         });
-        assert_eq!(ts.tile_size, [512u32, 512]);
+        assert_eq!(ts.tile_size, TileSize {w: 512, h: 512});
         assert_eq!(ts.coordinates, vec![3u64, 2, 1]);
         assert_eq!(ts.format, EncodingFormat::Jpeg(JpegParameters::default()));
     }
