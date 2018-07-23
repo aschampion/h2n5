@@ -7,6 +7,7 @@ extern crate regex;
 #[macro_use]
 extern crate structopt;
 
+use std::collections::HashMap;
 use std::io::{
     Write,
 };
@@ -14,7 +15,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use actix_web::*;
-use actix_web::dev::Params;
 use actix_web::middleware::cors;
 use n5::{
     DatasetAttributes,
@@ -35,7 +35,7 @@ struct SlicingDims {
 
 /// Trait for types that can be configured by URL query string parameters.
 trait QueryConfigurable {
-    fn configure(&mut self, params: &Params);
+    fn configure(&mut self, params: &HashMap<String, String>);
 }
 
 #[derive(Debug, PartialEq)]
@@ -52,8 +52,8 @@ impl Default for JpegParameters {
 }
 
 impl QueryConfigurable for JpegParameters {
-    fn configure(&mut self, params: &Params) {
-        if let Ok(q) = params.query::<u8>("q") {
+    fn configure(&mut self, params: &HashMap<String, String>) {
+        if let Some(q) = params.get("q").and_then(|q| q.parse::<u8>().ok()) {
             self.quality = q;
         }
     }
@@ -116,7 +116,7 @@ impl FromStr for EncodingFormat {
 impl QueryConfigurable for EncodingFormat {
     #[allow(unknown_lints)]
     #[allow(single_match)]
-    fn configure(&mut self, params: &Params) {
+    fn configure(&mut self, params: &HashMap<String, String>) {
         match *self {
             EncodingFormat::Jpeg(ref mut p) => p.configure(params),
             _ => (),
@@ -230,7 +230,7 @@ impl FromStr for TileSpec {
 fn tile(req: &HttpRequest<Options>) -> Result<HttpResponse> {
     let spec = {
         let mut spec = TileSpec::from_str(&req.match_info()["spec"])?;
-        spec.format.configure(req.match_info());
+        spec.format.configure(&*req.query());
         spec
     };
 
