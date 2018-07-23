@@ -13,7 +13,7 @@ keywords = ["n5"]
 categories = ["command-line-utilities", "science"]
 
 [dependencies]
-actix-web = "0.4"
+actix-web = "0.7"
 image = "0.19"
 n5 = "0.2"
 ndarray = "0.11"

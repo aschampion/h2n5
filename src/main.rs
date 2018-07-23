@@ -35,7 +35,7 @@ struct SlicingDims {
 
 /// Trait for types that can be configured by URL query string parameters.
 trait QueryConfigurable {
-    fn configure<'a>(&mut self, params: &'a Params<'a>);
+    fn configure(&mut self, params: &Params);
 }
 
 #[derive(Debug, PartialEq)]
@@ -52,7 +52,7 @@ impl Default for JpegParameters {
 }
 
 impl QueryConfigurable for JpegParameters {
-    fn configure<'a>(&mut self, params: &'a Params<'a>) {
+    fn configure(&mut self, params: &Params) {
         if let Ok(q) = params.query::<u8>("q") {
             self.quality = q;
         }
@@ -116,7 +116,7 @@ impl FromStr for EncodingFormat {
 impl QueryConfigurable for EncodingFormat {
     #[allow(unknown_lints)]
     #[allow(single_match)]
-    fn configure<'a>(&mut self, params: &'a Params<'a>) {
+    fn configure(&mut self, params: &Params) {
         match *self {
             EncodingFormat::Jpeg(ref mut p) => p.configure(params),
             _ => (),
@@ -160,8 +160,8 @@ impl From<std::num::ParseIntError> for TileSpecError {
 impl ResponseError for TileSpecError {
     fn error_response(&self) -> HttpResponse {
         match *self {
-            _ => HttpResponse::build(StatusCode::BAD_REQUEST)
-                    .body(self.to_string()).unwrap(),
+            _ => HttpResponse::build(http::StatusCode::BAD_REQUEST)
+                    .body(self.to_string()),
         }
     }
 }
@@ -227,10 +227,10 @@ impl FromStr for TileSpec {
 
 #[allow(unknown_lints)]
 #[allow(needless_pass_by_value)]
-fn tile(req: HttpRequest<Options>) -> Result<HttpResponse> {
+fn tile(req: &HttpRequest<Options>) -> Result<HttpResponse> {
     let spec = {
         let mut spec = TileSpec::from_str(&req.match_info()["spec"])?;
-        spec.format.configure(req.query());
+        spec.format.configure(req.match_info());
         spec
     };
 
@@ -248,13 +248,13 @@ fn tile(req: HttpRequest<Options>) -> Result<HttpResponse> {
     match *data_attrs.get_data_type() {
         DataType::UINT8 => read_and_encode::<u8, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
         DataType::UINT16 => read_and_encode::<u16, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
-        _ => return Ok(httpcodes::HttpNotImplemented.with_reason(
-                "Data type does not have an image renderer implemented")),
+        _ => return Ok(HttpResponse::NotImplemented()
+            .reason("Data type does not have an image renderer implemented")
+            .finish()),
     }
     Ok(HttpResponse::Ok()
         .content_type(spec.format.content_type())
-        .body(tile_buffer)
-        .unwrap())
+        .body(tile_buffer))
 }
 
 // TODO: Single channel only.
@@ -326,7 +326,7 @@ struct Options {
     #[structopt(short = "p", long = "port", default_value = "8088")]
     port: u16,
 
-    /// Number of threads for handling requests.
+    /// Number of worker threads for handling requests.
     /// By default, the number of CPU cores is used.
     #[structopt(short = "t", long = "threads")]
     threads: Option<usize>,
@@ -348,20 +348,20 @@ struct Options {
 fn main() {
     let opt = Options::from_args();
 
-    let mut server = HttpServer::new(
+    let mut server = server::new(
         || {
             let opt = Options::from_args();
-            let mut app = Application::with_state(opt.clone())
+            let mut app = App::with_state(opt.clone())
                 .resource("/tile/{spec:.*}", |r| r.f(tile));
             if opt.cors {
                 app = app.middleware(cors::Cors::build()
                     .send_wildcard()
-                    .finish().expect("Can not create CORS middleware"));
+                    .finish());
             }
             app
         })
         .bind(format!("{}:{}", opt.bind_address, opt.port)).unwrap();
-    if let Some(threads) = opt.threads { server = server.threads(threads); }
+    if let Some(threads) = opt.threads { server = server.workers(threads); }
     server.run();
 }
 
