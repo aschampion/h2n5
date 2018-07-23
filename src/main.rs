@@ -70,7 +70,7 @@ impl EncodingFormat {
         &self,
         writer: &mut W,
         bytes: &[u8],
-        tile_size: &[u32; 2],
+        tile_size: [u32; 2],
         image_color_type: image::ColorType,
     ) -> Result<(), std::io::Error> {
         match *self {
@@ -309,7 +309,7 @@ where n5::VecDataBlock<T>: n5::DataBlock<T>,
             data.len() * std::mem::size_of::<T>())
     };
 
-    spec.format.encode(writer, bytes, &spec.tile_size, image_color_type)
+    spec.format.encode(writer, bytes, spec.tile_size, image_color_type)
 }
 
 /// Serve N5 datasets over HTTP as tiled image stacks.
