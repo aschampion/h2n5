@@ -125,11 +125,56 @@ impl QueryConfigurable for EncodingFormat {
     }
 }
 
+#[derive(Debug, PartialEq)]
+enum ChannelPacking {
+    Gray,
+    GrayA,
+    RGBA,
+}
+
+impl ChannelPacking {
+    fn from_query(params: &HashMap<String, String>) -> Result<Self, ()> {
+        if let Some(pack) = params.get("pack") {
+            Self::from_str(pack)
+        } else {
+            Ok(ChannelPacking::default())
+        }
+    }
+
+    fn num_channels(&self) -> u8 {
+        match self {
+            ChannelPacking::Gray => 1,
+            ChannelPacking::GrayA => 2,
+            ChannelPacking::RGBA => 4,
+        }
+    }
+}
+
+impl Default for ChannelPacking {
+    fn default() -> Self {
+        ChannelPacking::Gray
+    }
+}
+
+impl FromStr for ChannelPacking {
+    type Err = ();  // TODO
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "gray" => Ok(ChannelPacking::Gray),
+            "graya" => Ok(ChannelPacking::GrayA),
+            "rgba" => Ok(ChannelPacking::RGBA),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug)]
 enum TileSpecError {
     InvalidValue(std::num::ParseIntError),
     MalformedPath,
     UnknownEncodingFormat,
+    UnknownChannelPacking,
 }
 
 impl std::fmt::Display for TileSpecError {
@@ -148,6 +193,7 @@ impl std::error::Error for TileSpecError {
             TileSpecError::InvalidValue(_) => "Invalid value for tiling parameter",
             TileSpecError::MalformedPath => "Tiling request path was malformed",
             TileSpecError::UnknownEncodingFormat => "Unknown encoding format",
+            TileSpecError::UnknownChannelPacking => "Unknown channel packing",
         }
     }
 }
@@ -199,6 +245,7 @@ struct TileSpec {
     tile_size: TileSize,
     coordinates: Vec<u64>,
     format: EncodingFormat,
+    packing: ChannelPacking,
 }
 
 impl FromStr for TileSpec {
@@ -241,12 +288,15 @@ impl FromStr for TileSpec {
         let format = EncodingFormat::from_str(caps.name("format").unwrap().as_str())
             .map_err(|_| TileSpecError::UnknownEncodingFormat)?;
 
+        let packing = ChannelPacking::default();
+
         Ok(TileSpec {
             n5_dataset,
             slicing_dims,
             tile_size,
             coordinates,
             format,
+            packing,
         })
     }
 }
@@ -257,6 +307,8 @@ fn tile(req: &HttpRequest<Options>) -> Result<HttpResponse> {
     let spec = {
         let mut spec = TileSpec::from_str(&req.match_info()["spec"])?;
         spec.format.configure(&*req.query());
+        spec.packing = ChannelPacking::from_query(&*req.query())
+            .map_err(|_| TileSpecError::UnknownChannelPacking)?;
         spec
     };
 
@@ -281,6 +333,8 @@ fn tile(req: &HttpRequest<Options>) -> Result<HttpResponse> {
     match *data_attrs.get_data_type() {
         DataType::UINT8 => read_and_encode::<u8, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
         DataType::UINT16 => read_and_encode::<u16, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::UINT32 => read_and_encode::<u32, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::UINT64 => read_and_encode::<u64, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
         _ => return Ok(HttpResponse::NotImplemented()
             .reason("Data type does not have an image renderer implemented")
             .finish()),
@@ -325,7 +379,18 @@ where n5::VecDataBlock<T>: n5::DataBlock<T>,
             // Permute slab so that channels dimension is at end.
             unimplemented!()
         },
-        None => image::ColorType::Gray(8 * std::mem::size_of::<T>() as u8),
+        None => {
+            let bits_per_channel = 8 / spec.packing.num_channels() * std::mem::size_of::<T>() as u8;
+            if bits_per_channel > 16 {
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
+                    "Packed bits per channel must be <= 16"));
+            }
+            match spec.packing {
+                ChannelPacking::Gray => image::ColorType::Gray(bits_per_channel),
+                ChannelPacking::GrayA => image::ColorType::GrayA(bits_per_channel),
+                ChannelPacking::RGBA => image::ColorType::RGBA(bits_per_channel),
+            }
+        }
     };
 
     let data = if spec.slicing_dims.plane_dims[0] > spec.slicing_dims.plane_dims[1] {

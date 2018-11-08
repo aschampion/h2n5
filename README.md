@@ -36,8 +36,16 @@ h2n5 -h
 ## Notes
 
 - PNG (`png`) and JPEG (`jpg`|`jpeg`) encoding formats are supported.
-- Currently, only `UINT8` and `UINT16` (PNG only) N5 data types are supported.
-- Currently, only grayscale tiles are returned (by slicing remaining dimensions as singletons). Slicing a third dimension for RGB(A) channels (e.g., `slicing_dims` as `0_1_4`) will be supported, and is currently parsed correctly, but not yet implemented for tile encoding.
+- Currently, only grayscale tiles are returned (by slicing remaining dimensions as singletons) or grayscale + alpha or RGBA by packing these scalar values across channels using the `pack` query parameter. Slicing a third dimension for RGB(A) channels (e.g., `slicing_dims` as `0_1_4`) will be supported, and is currently parsed correctly, but not yet implemented for tile encoding.
+
+### Supported data type, channel packing, and encoding formats
+
+|        | gray (default) | graya      | rgba       |
+|--------|----------------|------------|------------|
+| UINT8  | JPEG PNG       |            |            |
+| UINT16 | PNG            | JPEG PNG   |            |
+| UINT32 |                | PNG        | JPEG PNG   |
+| UINT64 |                |            | PNG        |
 
 ## License
 
