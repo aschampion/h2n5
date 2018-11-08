@@ -335,6 +335,8 @@ fn tile(req: &HttpRequest<Options>) -> Result<HttpResponse> {
         DataType::UINT16 => read_and_encode::<u16, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
         DataType::UINT32 => read_and_encode::<u32, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
         DataType::UINT64 => read_and_encode::<u64, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::FLOAT32 => read_and_encode::<f32, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::FLOAT64 => read_and_encode::<f64, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
         _ => return Ok(HttpResponse::NotImplemented()
             .reason("Data type does not have an image renderer implemented")
             .finish()),

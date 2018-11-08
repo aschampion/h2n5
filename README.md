@@ -46,6 +46,8 @@ h2n5 -h
 | UINT16 | PNG            | JPEG PNG   |            |
 | UINT32 |                | PNG        | JPEG PNG   |
 | UINT64 |                |            | PNG        |
+| FLOAT32|                | PNG        | JPEG PNG   |
+| FLOAT64|                |            | PNG        |
 
 ## License
 
