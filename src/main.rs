@@ -1,3 +1,5 @@
+#![feature(specialization)]
+
 use std::collections::HashMap;
 use std::io::{
     Write,
@@ -5,6 +7,7 @@ use std::io::{
 use std::num::ParseIntError;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use actix_web::*;
 use actix_cors::Cors;
@@ -22,6 +25,11 @@ use n5::filesystem::{
 use n5::ndarray::prelude::*;
 use n5::smallvec::{SmallVec, smallvec};
 use structopt::StructOpt;
+
+
+mod cache;
+
+use cache::N5CacheReader;
 
 
 #[derive(Debug, PartialEq)]
@@ -317,6 +325,7 @@ fn tile(
     let root_path = state.root_path.to_str()
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Paths must be UTF-8"))?;
     let n = N5Filesystem::open(root_path)?;
+    let n = &req.state().n5cache;
     let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
     // Allocate a buffer large enough for the uncompressed tile, as the
     // compressed size will be less with high probability.
@@ -450,6 +459,15 @@ struct Options {
     /// Maximum tile size
     #[structopt(long = "max-tile-size", default_value = "4096,4096")]
     max_tile_size: TileSize,
+
+    /// Cache size (in blocks) per dataset
+    #[structopt(long = "ds-block-cache-size", default_value = "1024")]
+    ds_block_cache_size: usize,
+}
+
+struct AppState {
+    n5cache: Arc<N5CacheReader<N5Filesystem>>,
+    max_tile_size: TileSize,
 }
 
 mod actix_middleware_kludge {
@@ -485,6 +503,11 @@ mod actix_middleware_kludge {
 fn main() -> std::io::Result<()> {
 
     let opt = Options::from_args();
+    let root_path = opt.root_path.to_str().expect("N5 root path must be UTF-8");
+    let n5 = N5Filesystem::open(root_path).expect("Failed to open N5");
+    let n5cache = Arc::new(N5CacheReader::wrap(n5, opt.ds_block_cache_size));
+    let max_tile_size = opt.max_tile_size.clone();
+    let cors = opt.cors.clone();
     env_logger::init();
 
     let mut server = HttpServer::new(
