@@ -1,8 +1,12 @@
+#![feature(specialization)]
+
 extern crate actix_web;
 extern crate image;
+extern crate lru_cache;
 extern crate n5;
 extern crate ndarray;
 extern crate num_traits;
+extern crate serde_json;
 extern crate regex;
 #[macro_use]
 extern crate structopt;
@@ -14,6 +18,7 @@ use std::io::{
 use std::num::ParseIntError;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use actix_web::*;
 use actix_web::middleware::cors;
@@ -26,6 +31,11 @@ use n5::filesystem::{
     N5Filesystem,
 };
 use structopt::StructOpt;
+
+
+mod cache;
+
+use cache::N5CacheReader;
 
 
 #[derive(Debug, PartialEq)]
@@ -253,7 +263,7 @@ impl FromStr for TileSpec {
 
 #[allow(unknown_lints)]
 #[allow(needless_pass_by_value)]
-fn tile(req: &HttpRequest<Options>) -> Result<HttpResponse> {
+fn tile(req: &HttpRequest<AppState>) -> Result<HttpResponse> {
     let spec = {
         let mut spec = TileSpec::from_str(&req.match_info()["spec"])?;
         spec.format.configure(&*req.query());
@@ -267,9 +277,7 @@ fn tile(req: &HttpRequest<Options>) -> Result<HttpResponse> {
             .finish());
     }
 
-    let root_path = req.state().root_path.to_str()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Paths must be UTF-8"))?;
-    let n = N5Filesystem::open(root_path)?;
+    let n = &req.state().n5cache;
     let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
     // Allocate a buffer large enough for the uncompressed tile, as the
     // compressed size will be less with high probability.
@@ -279,8 +287,8 @@ fn tile(req: &HttpRequest<Options>) -> Result<HttpResponse> {
     let mut tile_buffer: Vec<u8> = Vec::with_capacity(buffer_size);
 
     match *data_attrs.get_data_type() {
-        DataType::UINT8 => read_and_encode::<u8, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
-        DataType::UINT16 => read_and_encode::<u16, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::UINT8 => read_and_encode::<u8, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::UINT16 => read_and_encode::<u16, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?,
         _ => return Ok(HttpResponse::NotImplemented()
             .reason("Data type does not have an image renderer implemented")
             .finish()),
@@ -380,17 +388,33 @@ struct Options {
     /// Maximum tile size
     #[structopt(long = "max-tile-size", default_value = "4096,4096")]
     max_tile_size: TileSize,
+
+    /// Cache size (in blocks) per dataset
+    #[structopt(long = "ds-block-cache-size", default_value = "1024")]
+    ds_block_cache_size: usize,
+}
+
+struct AppState {
+    n5cache: Arc<N5CacheReader<N5Filesystem>>,
+    max_tile_size: TileSize,
 }
 
 fn main() {
     let opt = Options::from_args();
+    let root_path = opt.root_path.to_str().expect("N5 root path must be UTF-8");
+    let n5 = N5Filesystem::open(root_path).expect("Failed to open N5");
+    let n5cache = Arc::new(N5CacheReader::wrap(n5, opt.ds_block_cache_size));
+    let max_tile_size = opt.max_tile_size.clone();
+    let cors = opt.cors.clone();
 
     let mut server = server::new(
-        || {
-            let opt = Options::from_args();
-            let mut app = App::with_state(opt.clone())
+        move || {
+            let mut app = App::with_state(AppState {
+                    n5cache: n5cache.clone(),
+                    max_tile_size: max_tile_size.clone(),
+                })
                 .resource("/tile/{spec:.*}", |r| r.f(tile));
-            if opt.cors {
+            if cors {
                 app = app.middleware(cors::Cors::build()
                     .send_wildcard()
                     .finish());
