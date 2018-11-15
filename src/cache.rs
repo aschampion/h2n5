@@ -6,15 +6,10 @@ use lru_cache::LruCache;
 use n5::prelude::*;
 
 
-pub struct N5CacheReader<N: N5Reader> {
-    reader: N,
-    blocks_capacity: usize,
-    cache_u8: BlockCache<u8>,
-    cache_f32: BlockCache<f32>,
-}
+type DatasetBlockCache<BT> = LruCache<Vec<i64>, Option<VecDataBlock<BT>>>;
 
 struct BlockCache<BT: Clone> {
-    blocks: RwLock<HashMap<String, RwLock<LruCache<Vec<i64>, Option<VecDataBlock<BT>>>>>>,
+    blocks: RwLock<HashMap<String, RwLock<DatasetBlockCache<BT>>>>,
 }
 
 impl<BT: Clone> BlockCache<BT> {
@@ -23,10 +18,22 @@ impl<BT: Clone> BlockCache<BT> {
             blocks: RwLock::new(HashMap::new()),
         }
     }
+
+    fn clear(&mut self) {
+        self.blocks.write().unwrap().clear();
+    }
 }
 
 trait TypeCacheable<T: Clone> {
     fn cache(&self) -> &BlockCache<T>;
+}
+
+pub struct N5CacheReader<N: N5Reader> {
+    reader: N,
+    blocks_capacity: usize,
+    attr_cache: RwLock<HashMap<String, DatasetAttributes>>,
+    cache_u8: BlockCache<u8>,
+    cache_f32: BlockCache<f32>,
 }
 
 impl<N: N5Reader> N5CacheReader<N> {
@@ -37,9 +44,16 @@ impl<N: N5Reader> N5CacheReader<N> {
         Self {
             reader,
             blocks_capacity,
+            attr_cache: RwLock::new(HashMap::new()),
             cache_u8: BlockCache::new(),
             cache_f32: BlockCache::new(),
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.attr_cache.write().unwrap().clear();
+        self.cache_u8.clear();
+        self.cache_f32.clear();
     }
 }
 
@@ -72,7 +86,16 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
     fn get_dataset_attributes(&self, path_name: &str) ->
         Result<n5::DatasetAttributes, Error> {
 
-        self.reader.get_dataset_attributes(path_name)
+        {
+            if let Some(data_attrs) = self.attr_cache.read().unwrap().get(path_name) {
+                return Ok(data_attrs.clone());
+            }
+        }
+
+        let data_attrs = self.reader.get_dataset_attributes(path_name)?;
+        self.attr_cache.write().unwrap().insert(path_name.to_owned(), data_attrs.clone());
+
+        Ok(data_attrs)
     }
 
     fn exists(&self, path_name: &str) -> bool {
@@ -98,7 +121,7 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         if cache.blocks.read().unwrap().get(path_name).is_none() {
             cache.blocks.write().unwrap()
                 .entry(path_name.to_owned())
-                .or_insert(RwLock::new(LruCache::new(self.blocks_capacity)));
+                .or_insert_with(|| RwLock::new(LruCache::new(self.blocks_capacity)));
         }
 
         {

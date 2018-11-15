@@ -517,7 +517,10 @@ fn main() -> std::io::Result<()> {
             let opt = Options::from_args();
             let cors = opt.cors;
             App::new()
-                .data(opt)
+                .data(AppState {
+                    n5cache: n5cache.clone(),
+                    max_tile_size: max_tile_size.clone(),
+                })
                 .wrap(actix_web::middleware::Logger::default())
                 .service(
                     web::resource("/tile/{spec:.*}")
