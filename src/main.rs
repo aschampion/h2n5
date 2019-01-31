@@ -4,7 +4,6 @@ extern crate n5;
 extern crate ndarray;
 extern crate num_traits;
 extern crate regex;
-#[macro_use]
 extern crate structopt;
 
 use std::collections::HashMap;
