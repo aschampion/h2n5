@@ -20,10 +20,13 @@ use n5::{
     DatasetAttributes,
     DataType,
     N5Reader,
+    ReflectedType,
 };
 use n5::filesystem::{
     N5Filesystem,
 };
+use n5::ndarray::prelude::*;
+use n5::smallvec::smallvec;
 use structopt::StructOpt;
 
 
@@ -353,17 +356,16 @@ fn read_and_encode<T, N: N5Reader, W: Write>(
     writer: &mut W,
 ) -> Result<(), std::io::Error>
 where n5::VecDataBlock<T>: n5::DataBlock<T>,
-      DataType: n5::DataBlockCreator<T>,
-      T: Clone + num_traits::identities::Zero {
+      T: ReflectedType + num_traits::identities::Zero {
 
     // Express the spec tile as an N-dim bounding box.
-    let mut size = vec![1i64; data_attrs.get_dimensions().len()];
+    let mut size = smallvec![1i64; data_attrs.get_dimensions().len()];
     size[spec.slicing_dims.plane_dims[0] as usize] = i64::from(spec.tile_size.w);
     size[spec.slicing_dims.plane_dims[1] as usize] = i64::from(spec.tile_size.h);
     if let Some(dim) = spec.slicing_dims.channel_dim {
         size[dim as usize] = data_attrs.get_dimensions()[dim as usize];
     }
-    let bbox = n5::BoundingBox::new(
+    let bbox = BoundingBox::new(
         spec.coordinates.iter().map(|n| *n as i64).collect(),
         size,
     );
