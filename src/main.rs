@@ -26,7 +26,7 @@ use n5::filesystem::{
     N5Filesystem,
 };
 use n5::ndarray::prelude::*;
-use n5::smallvec::smallvec;
+use n5::smallvec::{SmallVec, smallvec};
 use structopt::StructOpt;
 
 
@@ -225,7 +225,7 @@ impl FromStr for TileSize {
     type Err = ParseIntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let coords: Vec<&str> = s.split(',').collect();
+        let coords: SmallVec<[&str; 3]> = s.split(',').collect();
 
         let w = coords[0].parse::<u32>()?;
         let h = coords[1].parse::<u32>()?;
@@ -245,7 +245,7 @@ struct TileSpec {
     n5_dataset: String,
     slicing_dims: SlicingDims,
     tile_size: TileSize,
-    coordinates: Vec<u64>,
+    coordinates: SmallVec<[u64; 6]>,
     format: EncodingFormat,
     packing: ChannelPacking,
 }
@@ -285,7 +285,7 @@ impl FromStr for TileSpec {
         let coordinates = caps.name("coords").unwrap().as_str().split('/')
             .filter(|n| !str::is_empty(*n))
             .map(u64::from_str)
-            .collect::<Result<Vec<u64>, _>>()?;
+            .collect::<Result<SmallVec<_>, _>>()?;
 
         let format = EncodingFormat::from_str(caps.name("format").unwrap().as_str())
             .map_err(|_| TileSpecError::UnknownEncodingFormat)?;
@@ -484,7 +484,7 @@ mod tests {
             channel_dim: None,
         });
         assert_eq!(ts.tile_size, TileSize {w: 512, h: 512});
-        assert_eq!(ts.coordinates, vec![3u64, 2, 1]);
+        assert_eq!(ts.coordinates, SmallVec::from([3u64, 2, 1]));
         assert_eq!(ts.format, EncodingFormat::Jpeg(JpegParameters::default()));
     }
 }
