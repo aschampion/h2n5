@@ -305,7 +305,7 @@ impl FromStr for TileSpec {
 
 #[allow(unknown_lints)]
 #[allow(needless_pass_by_value)]
-fn tile(req: &HttpRequest<Options>) -> Result<HttpResponse> {
+fn tile(req: &HttpRequest) -> Result<HttpResponse> {
     let spec = {
         let mut spec = TileSpec::from_str(&req.match_info()["spec"])?;
         spec.format.configure(&*req.query());
@@ -453,10 +453,11 @@ struct Options {
 fn main() {
     let opt = Options::from_args();
 
-    let mut server = server::new(
+    let mut server = HttpServer::new(
         || {
             let opt = Options::from_args();
-            let mut app = App::with_state(opt.clone())
+            let mut app = App::new()
+                .data(opt.clone())
                 .resource("/tile/{spec:.*}", |r| r.f(tile));
             if opt.cors {
                 app = app.middleware(cors::Cors::build()
