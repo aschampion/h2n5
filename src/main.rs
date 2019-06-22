@@ -1,4 +1,5 @@
 extern crate actix_web;
+extern crate actix_cors;
 extern crate image;
 extern crate n5;
 extern crate ndarray;
@@ -15,7 +16,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use actix_web::*;
-use actix_web::middleware::cors;
+use actix_cors::Cors;
+use actix_web::web::Data;
+use actix_web::web::Query;
 use n5::{
     DatasetAttributes,
     DataType,
@@ -305,23 +308,27 @@ impl FromStr for TileSpec {
 
 #[allow(unknown_lints)]
 #[allow(needless_pass_by_value)]
-fn tile(req: &HttpRequest) -> Result<HttpResponse> {
+fn tile(
+    state: Data<Options>,
+    req: HttpRequest,
+    query: Query<HashMap<String, String>>,
+) -> Result<HttpResponse> {
     let spec = {
         let mut spec = TileSpec::from_str(&req.match_info()["spec"])?;
-        spec.format.configure(&*req.query());
-        spec.packing = ChannelPacking::from_query(&*req.query())
+        spec.format.configure(&query);
+        spec.packing = ChannelPacking::from_query(&query)
             .map_err(|_| TileSpecError::UnknownChannelPacking)?;
         spec
     };
 
-    if spec.tile_size.w > req.state().max_tile_size.w ||
-       spec.tile_size.h > req.state().max_tile_size.h {
+    if spec.tile_size.w > state.max_tile_size.w ||
+       spec.tile_size.h > state.max_tile_size.h {
         return Ok(HttpResponse::BadRequest()
             .reason("Maximum tile size exceeded")
             .finish());
     }
 
-    let root_path = req.state().root_path.to_str()
+    let root_path = state.root_path.to_str()
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Paths must be UTF-8"))?;
     let n = N5Filesystem::open(root_path)?;
     let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
@@ -450,25 +457,27 @@ struct Options {
     max_tile_size: TileSize,
 }
 
-fn main() {
+fn main() -> std::io::Result<()> {
     let opt = Options::from_args();
 
     let mut server = HttpServer::new(
         || {
             let opt = Options::from_args();
+            let cors = opt.cors.clone();
             let mut app = App::new()
-                .data(opt.clone())
-                .resource("/tile/{spec:.*}", |r| r.f(tile));
-            if opt.cors {
-                app = app.middleware(cors::Cors::build()
-                    .send_wildcard()
-                    .finish());
+                .data(opt)
+                .service(
+                    web::resource("/tile/{spec:.*}")
+                        .route(web::get().to(tile))
+                );
+            if cors {
+                app = app.wrap(Cors::new().send_wildcard());
             }
             app
         })
-        .bind(format!("{}:{}", opt.bind_address, opt.port)).unwrap();
+        .bind(format!("{}:{}", opt.bind_address, opt.port))?;
     if let Some(threads) = opt.threads { server = server.workers(threads); }
-    server.run();
+    server.run()
 }
 
 #[cfg(test)]
