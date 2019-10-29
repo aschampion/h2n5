@@ -337,6 +337,7 @@ fn tile(
     let buffer_size = spec.tile_size.w as usize * spec.tile_size.h as usize
         * spec.slicing_dims.channel_dim.map(|d| data_attrs.get_dimensions()[d as usize] as usize).unwrap_or(1)
         * data_attrs.get_data_type().size_of();
+    let buffer_size = std::cmp::min(buffer_size, state.max_tile_prealloc);
     let mut tile_buffer: Vec<u8> = Vec::with_capacity(buffer_size);
 
     match *data_attrs.get_data_type() {
@@ -451,6 +452,10 @@ struct Options {
     /// N5 root path
     #[structopt(name = "N5_ROOT_PATH", parse(from_os_str), default_value = ".")]
     root_path: PathBuf,
+
+    /// Maximum tile buffer preallocation
+    #[structopt(long = "max-tile-prealloc", default_value = "1000000")]
+    max_tile_prealloc: usize,
 
     /// Maximum tile size
     #[structopt(long = "max-tile-size", default_value = "4096,4096")]
