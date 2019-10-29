@@ -1,4 +1,5 @@
 extern crate actix_web;
+extern crate actix_service;
 extern crate actix_cors;
 extern crate image;
 extern crate n5;
@@ -457,23 +458,53 @@ struct Options {
     max_tile_size: TileSize,
 }
 
+mod actix_middleware_kludge {
+    use actix_service::{IntoTransform, Service, Transform};
+    use actix_web::middleware::Condition;
+
+    // Kludge necessary to work around limitations of conditional
+    // actix middlewares.
+    // See: https://github.com/actix/actix-web/issues/934
+    pub(crate) struct WrapCondition<T> {
+        trans: T,
+        enable: bool,
+    }
+
+    impl<T> WrapCondition<T> {
+        pub fn new(enable: bool, trans: T) -> Self {
+            Self { trans, enable }
+        }
+    }
+
+    impl<S, T, Target> IntoTransform<Condition<Target>, S> for WrapCondition<T>
+    where
+        S: Service,
+        T: IntoTransform<Target, S>,
+        Target: Transform<S, Request = S::Request, Response = S::Response, Error = S::Error>,
+    {
+        fn into_transform(self) -> Condition<Target> {
+            Condition::new(self.enable, self.trans.into_transform())
+        }
+    }
+}
+
 fn main() -> std::io::Result<()> {
+
     let opt = Options::from_args();
 
     let mut server = HttpServer::new(
         || {
+            use actix_middleware_kludge::WrapCondition;
+
             let opt = Options::from_args();
             let cors = opt.cors.clone();
-            let mut app = App::new()
+            App::new()
                 .data(opt)
                 .service(
                     web::resource("/tile/{spec:.*}")
                         .route(web::get().to(tile))
-                );
-            if cors {
-                app = app.wrap(Cors::new().send_wildcard());
-            }
-            app
+                )
+                .wrap(WrapCondition::new(cors, Cors::new().send_wildcard()))
         })
         .bind(format!("{}:{}", opt.bind_address, opt.port))?;
     if let Some(threads) = opt.threads { server = server.workers(threads); }
