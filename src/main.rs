@@ -274,8 +274,7 @@ impl FromStr for TileSpec {
                 sd_vals.next().unwrap()?,
                 sd_vals.next().unwrap()?,
             ],
-            // TODO: ugly because `transpose` is not stable.
-            channel_dim: sd_vals.next().map_or(Ok(None), |v| v.map(Some))?,
+            channel_dim: sd_vals.next().transpose()?,
         };
 
         let mut ts_vals = caps.name("tile_size").unwrap().as_str().split('_')
