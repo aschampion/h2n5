@@ -90,7 +90,7 @@ impl EncodingFormat {
                     image_color_type)
             },
             EncodingFormat::Png => {
-                let mut encoder = image::png::PNGEncoder::new(writer);
+                let encoder = image::png::PNGEncoder::new(writer);
                 encoder.encode(
                     bytes,
                     tile_size.w,
