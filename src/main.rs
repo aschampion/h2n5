@@ -1,13 +1,3 @@
-extern crate actix_web;
-extern crate actix_service;
-extern crate actix_cors;
-extern crate image;
-extern crate n5;
-extern crate ndarray;
-extern crate num_traits;
-extern crate regex;
-extern crate structopt;
-
 use std::collections::HashMap;
 use std::io::{
     Write,
@@ -184,7 +174,7 @@ enum TileSpecError {
 }
 
 impl std::fmt::Display for TileSpecError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use std::error::Error;
         match *self {
             TileSpecError::InvalidValue(ref e) => write!(f, "{}: {}", self.description(), e),
@@ -239,7 +229,7 @@ impl FromStr for TileSize {
 }
 
 impl std::fmt::Display for TileSize {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{},{}", self.w, self.h)
     }
 }
