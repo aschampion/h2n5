@@ -495,6 +495,7 @@ mod actix_middleware_kludge {
 fn main() -> std::io::Result<()> {
 
     let opt = Options::from_args();
+    env_logger::init();
 
     let mut server = HttpServer::new(
         || {
@@ -504,6 +505,7 @@ fn main() -> std::io::Result<()> {
             let cors = opt.cors.clone();
             App::new()
                 .data(opt)
+                .wrap(actix_web::middleware::Logger::default())
                 .service(
                     web::resource("/tile/{spec:.*}")
                         .route(web::get().to(tile))

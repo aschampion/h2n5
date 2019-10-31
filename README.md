@@ -49,6 +49,16 @@ h2n5 -h
 | FLOAT32|                | PNG        | JPEG PNG   |
 | FLOAT64|                |            | PNG        |
 
+### Logging
+
+Logs are output to stderr using standard Rust `log` and `env_logger` in the `actix_web` scope. By default only major errors at the `WARN` level or above are shown. For example, to show all requests:
+
+```
+RUST_LOG=actix_web=info h2n5
+```
+
+For more information, see the [`env_logger`](https://docs.rs/env_logger) and [`actix_web` logging middleware](https://actix.rs/docs/errors/) documentation.
+
 ## License
 
 Licensed under either of
