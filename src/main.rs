@@ -497,7 +497,7 @@ fn main() -> std::io::Result<()> {
 
     let mut server = HttpServer::new(
         || {
-            use actix_middleware_kludge::WrapCondition;
+            use crate::actix_middleware_kludge::WrapCondition;
 
             let opt = Options::from_args();
             let cors = opt.cors.clone();
