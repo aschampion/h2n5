@@ -112,7 +112,6 @@ impl FromStr for EncodingFormat {
 
 impl QueryConfigurable for EncodingFormat {
     #[allow(unknown_lints)]
-    #[allow(single_match)]
     fn configure(&mut self, params: &HashMap<String, String>) {
         match *self {
             EncodingFormat::Jpeg(ref mut p) => p.configure(params),
@@ -295,7 +294,6 @@ impl FromStr for TileSpec {
 }
 
 #[allow(unknown_lints)]
-#[allow(needless_pass_by_value)]
 fn tile(
     state: Data<Options>,
     req: HttpRequest,
