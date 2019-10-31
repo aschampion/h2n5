@@ -1,13 +1,3 @@
-extern crate actix_web;
-extern crate actix_service;
-extern crate actix_cors;
-extern crate image;
-extern crate n5;
-extern crate ndarray;
-extern crate num_traits;
-extern crate regex;
-extern crate structopt;
-
 use std::collections::HashMap;
 use std::io::{
     Write,
@@ -122,7 +112,6 @@ impl FromStr for EncodingFormat {
 
 impl QueryConfigurable for EncodingFormat {
     #[allow(unknown_lints)]
-    #[allow(single_match)]
     fn configure(&mut self, params: &HashMap<String, String>) {
         match *self {
             EncodingFormat::Jpeg(ref mut p) => p.configure(params),
@@ -184,7 +173,7 @@ enum TileSpecError {
 }
 
 impl std::fmt::Display for TileSpecError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use std::error::Error;
         match *self {
             TileSpecError::InvalidValue(ref e) => write!(f, "{}: {}", self.description(), e),
@@ -239,7 +228,7 @@ impl FromStr for TileSize {
 }
 
 impl std::fmt::Display for TileSize {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{},{}", self.w, self.h)
     }
 }
@@ -265,9 +254,8 @@ impl FromStr for TileSpec {
             .expect("Impossible: regex is valid");
         let caps = re.captures(s).ok_or(TileSpecError::MalformedPath)?;
 
-        let n5_dataset = caps.name("dataset").unwrap().as_str().into();
-        let mut sd_vals = caps.name("slicing").unwrap().as_str().split('_')
-            .map(u32::from_str);
+        let n5_dataset = caps["dataset"].into();
+        let mut sd_vals = caps["slicing"].split('_').map(u32::from_str);
 
         let slicing_dims = SlicingDims {
             plane_dims: [
@@ -277,20 +265,19 @@ impl FromStr for TileSpec {
             channel_dim: sd_vals.next().transpose()?,
         };
 
-        let mut ts_vals = caps.name("tile_size").unwrap().as_str().split('_')
-            .map(u32::from_str);
+        let mut ts_vals = caps["tile_size"].split('_').map(u32::from_str);
 
         let tile_size = TileSize {
             w: ts_vals.next().unwrap()?,
             h: ts_vals.next().unwrap()?,
         };
 
-        let coordinates = caps.name("coords").unwrap().as_str().split('/')
+        let coordinates = caps["coords"].split('/')
             .filter(|n| !str::is_empty(*n))
             .map(u64::from_str)
             .collect::<Result<SmallVec<_>, _>>()?;
 
-        let format = EncodingFormat::from_str(caps.name("format").unwrap().as_str())
+        let format = EncodingFormat::from_str(&caps["format"])
             .map_err(|_| TileSpecError::UnknownEncodingFormat)?;
 
         let packing = ChannelPacking::default();
@@ -307,7 +294,6 @@ impl FromStr for TileSpec {
 }
 
 #[allow(unknown_lints)]
-#[allow(needless_pass_by_value)]
 fn tile(
     state: Data<Options>,
     req: HttpRequest,
@@ -499,7 +485,7 @@ fn main() -> std::io::Result<()> {
 
     let mut server = HttpServer::new(
         || {
-            use actix_middleware_kludge::WrapCondition;
+            use crate::actix_middleware_kludge::WrapCondition;
 
             let opt = Options::from_args();
             let cors = opt.cors.clone();
