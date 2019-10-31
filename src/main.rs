@@ -265,9 +265,8 @@ impl FromStr for TileSpec {
             .expect("Impossible: regex is valid");
         let caps = re.captures(s).ok_or(TileSpecError::MalformedPath)?;
 
-        let n5_dataset = caps.name("dataset").unwrap().as_str().into();
-        let mut sd_vals = caps.name("slicing").unwrap().as_str().split('_')
-            .map(u32::from_str);
+        let n5_dataset = caps["dataset"].into();
+        let mut sd_vals = caps["slicing"].split('_').map(u32::from_str);
 
         let slicing_dims = SlicingDims {
             plane_dims: [
@@ -277,20 +276,19 @@ impl FromStr for TileSpec {
             channel_dim: sd_vals.next().transpose()?,
         };
 
-        let mut ts_vals = caps.name("tile_size").unwrap().as_str().split('_')
-            .map(u32::from_str);
+        let mut ts_vals = caps["tile_size"].split('_').map(u32::from_str);
 
         let tile_size = TileSize {
             w: ts_vals.next().unwrap()?,
             h: ts_vals.next().unwrap()?,
         };
 
-        let coordinates = caps.name("coords").unwrap().as_str().split('/')
+        let coordinates = caps["coords"].split('/')
             .filter(|n| !str::is_empty(*n))
             .map(u64::from_str)
             .collect::<Result<SmallVec<_>, _>>()?;
 
-        let format = EncodingFormat::from_str(caps.name("format").unwrap().as_str())
+        let format = EncodingFormat::from_str(&caps["format"])
             .map_err(|_| TileSpecError::UnknownEncodingFormat)?;
 
         let packing = ChannelPacking::default();
