@@ -16,6 +16,7 @@ categories = ["command-line-utilities", "science"]
 actix-web = "1.0.8"
 actix-service = "0.4"
 actix-cors = "0.1"
+env_logger = "0.7"
 image = "0.19"
 n5 = "0.4"
 ndarray = "0.12"
