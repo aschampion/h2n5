@@ -398,13 +398,17 @@ where n5::VecDataBlock<T>: n5::DataBlock<T>,
     };
 
     // Get the image data as a byte slice.
-    let bytes: &[u8] = unsafe {
-        std::slice::from_raw_parts(
-            data.as_ref() as *const [T] as *const u8,
-            data.len() * std::mem::size_of::<T>())
-    };
+    let bytes: &[u8] = unsafe { as_u8_slice(&data) };
 
     spec.format.encode(writer, bytes, &spec.tile_size, image_color_type)
+}
+
+// Get the byte slice of a vec slice in a wrapper function
+// so that the lifetime is bound to the original slice's lifetime.
+unsafe fn as_u8_slice<T>(s: &[T]) -> &[u8] {
+    std::slice::from_raw_parts(
+        s as *const [T] as *const u8,
+        s.len() * std::mem::size_of::<T>())
 }
 
 /// Serve N5 datasets over HTTP as tiled image stacks.
