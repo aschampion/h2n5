@@ -492,7 +492,7 @@ fn main() -> std::io::Result<()> {
             use crate::actix_middleware_kludge::WrapCondition;
 
             let opt = Options::from_args();
-            let cors = opt.cors.clone();
+            let cors = opt.cors;
             App::new()
                 .data(opt)
                 .wrap(actix_web::middleware::Logger::default())
