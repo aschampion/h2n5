@@ -502,7 +502,7 @@ fn main() -> std::io::Result<()> {
                 )
                 .wrap(WrapCondition::new(cors, Cors::new().send_wildcard()))
         })
-        .bind(format!("{}:{}", opt.bind_address, opt.port))?;
+        .bind((opt.bind_address, opt.port))?;
     if let Some(threads) = opt.threads { server = server.workers(threads); }
     server.run()
 }
