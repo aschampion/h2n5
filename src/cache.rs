@@ -32,8 +32,16 @@ pub struct N5CacheReader<N: N5Reader> {
     reader: N,
     blocks_capacity: usize,
     attr_cache: RwLock<HashMap<String, DatasetAttributes>>,
+    cache_i8: BlockCache<i8>,
+    cache_i16: BlockCache<i16>,
+    cache_i32: BlockCache<i32>,
+    cache_i64: BlockCache<i64>,
     cache_u8: BlockCache<u8>,
+    cache_u16: BlockCache<u16>,
+    cache_u32: BlockCache<u32>,
+    cache_u64: BlockCache<u64>,
     cache_f32: BlockCache<f32>,
+    cache_f64: BlockCache<f64>,
 }
 
 impl<N: N5Reader> N5CacheReader<N> {
@@ -45,19 +53,38 @@ impl<N: N5Reader> N5CacheReader<N> {
             reader,
             blocks_capacity,
             attr_cache: RwLock::new(HashMap::new()),
+            cache_i8: BlockCache::new(),
+            cache_i16: BlockCache::new(),
+            cache_i32: BlockCache::new(),
+            cache_i64: BlockCache::new(),
             cache_u8: BlockCache::new(),
+            cache_u16: BlockCache::new(),
+            cache_u32: BlockCache::new(),
+            cache_u64: BlockCache::new(),
             cache_f32: BlockCache::new(),
+            cache_f64: BlockCache::new(),
         }
     }
 
     #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.attr_cache.write().unwrap().clear();
+        self.cache_i8.clear();
+        self.cache_i16.clear();
+        self.cache_i32.clear();
+        self.cache_i64.clear();
         self.cache_u8.clear();
+        self.cache_u16.clear();
+        self.cache_u32.clear();
+        self.cache_u64.clear();
         self.cache_f32.clear();
+        self.cache_f64.clear();
     }
 }
 
+// TODO: may be able to remove this specialization-based hack by using
+// any `Any`/`TypeId` based approach similar to the `TypeMap` from the
+// `polymap` crate.
 impl <N: N5Reader, T> TypeCacheable<T> for N5CacheReader<N>
 where
                   VecDataBlock<T>: DataBlock<T>,
@@ -67,17 +94,26 @@ where
     }
 }
 
-impl<N: N5Reader> TypeCacheable<u8> for N5CacheReader<N> {
-    fn cache(&self) -> &BlockCache<u8> {
-        &self.cache_u8
+macro_rules! type_cacheable {
+    ($ty_name:ty, $field:ident) => {
+        impl<N: N5Reader> TypeCacheable<$ty_name> for N5CacheReader<N> {
+            fn cache(&self) -> &BlockCache<$ty_name> {
+                &self.$field
+            }
+        }
     }
 }
 
-impl<N: N5Reader> TypeCacheable<f32> for N5CacheReader<N> {
-    fn cache(&self) -> &BlockCache<f32> {
-        &self.cache_f32
-    }
-}
+type_cacheable!(i8, cache_i8);
+type_cacheable!(i16, cache_i16);
+type_cacheable!(i32, cache_i32);
+type_cacheable!(i64, cache_i64);
+type_cacheable!(u8, cache_u8);
+type_cacheable!(u16, cache_u16);
+type_cacheable!(u32, cache_u32);
+type_cacheable!(u64, cache_u64);
+type_cacheable!(f32, cache_f32);
+type_cacheable!(f64, cache_f64);
 
 impl<N: N5Reader> N5Reader for N5CacheReader<N> {
     fn get_version(&self) -> Result<n5::Version, Error> {
