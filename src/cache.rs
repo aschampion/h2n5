@@ -6,7 +6,7 @@ use lru_cache::LruCache;
 use n5::prelude::*;
 
 
-type DatasetBlockCache<BT> = LruCache<Vec<i64>, Option<VecDataBlock<BT>>>;
+type DatasetBlockCache<BT> = LruCache<GridCoord, Option<VecDataBlock<BT>>>;
 
 struct BlockCache<BT: Clone> {
     blocks: RwLock<HashMap<String, RwLock<DatasetBlockCache<BT>>>>,
@@ -50,6 +50,7 @@ impl<N: N5Reader> N5CacheReader<N> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.attr_cache.write().unwrap().clear();
         self.cache_u8.clear();
@@ -58,9 +59,9 @@ impl<N: N5Reader> N5CacheReader<N> {
 }
 
 impl <N: N5Reader, T> TypeCacheable<T> for N5CacheReader<N>
-where DataType: n5::DataBlockCreator<T>,
+where
                   VecDataBlock<T>: DataBlock<T>,
-                  T: Clone {
+                  T: ReflectedType {
     default fn cache(&self) -> &BlockCache<T> {
         unimplemented!()
     }
@@ -110,11 +111,10 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         &self,
         path_name: &str,
         data_attrs: &DatasetAttributes,
-        grid_position: Vec<i64>
+        grid_position: GridCoord,
     ) -> Result<Option<VecDataBlock<T>>, Error>
-            where DataType: n5::DataBlockCreator<T>,
-                  VecDataBlock<T>: DataBlock<T>,
-                  T: Clone {
+            where VecDataBlock<T>: DataBlock<T>,
+                  T: ReflectedType {
 
         let cache = self.cache();
 
@@ -132,7 +132,7 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
             let ds_cache = &cache_lock[path_name];
             let mut ds_block_cache = ds_cache.write().unwrap();
 
-            if let Some(block) = ds_block_cache.get_mut(&grid_position) {
+            if let Some(block) = ds_block_cache.get_mut(&grid_position[..]) {
                 return Ok(block.clone())
             }
         }
@@ -142,6 +142,16 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         ds_cache.write().unwrap().insert(grid_position, block.clone());
 
         Ok(block)
+    }
+
+    fn read_block_into<T: ReflectedType, B: DataBlock<T>>(
+        &self,
+        _path_name: &str,
+        _data_attrs: &DatasetAttributes,
+        _grid_position: GridCoord,
+        _block: &mut B,
+    ) -> Result<Option<()>, Error> {
+        unimplemented!()
     }
 
     fn block_metadata(

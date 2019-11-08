@@ -303,7 +303,7 @@ impl FromStr for TileSpec {
 
 #[allow(unknown_lints)]
 fn tile(
-    state: Data<Options>,
+    state: Data<AppState>,
     req: HttpRequest,
     query: Query<HashMap<String, String>>,
 ) -> Result<HttpResponse> {
@@ -322,10 +322,7 @@ fn tile(
             .finish());
     }
 
-    let root_path = state.root_path.to_str()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Paths must be UTF-8"))?;
-    let n = N5Filesystem::open(root_path)?;
-    let n = &req.state().n5cache;
+    let n = &state.n5cache;
     let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
     // Allocate a buffer large enough for the uncompressed tile, as the
     // compressed size will be less with high probability.
@@ -336,12 +333,12 @@ fn tile(
     let mut tile_buffer: Vec<u8> = Vec::with_capacity(buffer_size);
 
     match *data_attrs.get_data_type() {
-        DataType::UINT8 => read_and_encode::<u8, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
-        DataType::UINT16 => read_and_encode::<u16, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
-        DataType::UINT32 => read_and_encode::<u32, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
-        DataType::UINT64 => read_and_encode::<u64, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
-        DataType::FLOAT32 => read_and_encode::<f32, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
-        DataType::FLOAT64 => read_and_encode::<f64, _, _>(&n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::UINT8 => read_and_encode::<u8, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::UINT16 => read_and_encode::<u16, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::UINT32 => read_and_encode::<u32, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::UINT64 => read_and_encode::<u64, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::FLOAT32 => read_and_encode::<f32, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::FLOAT64 => read_and_encode::<f64, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?,
         _ => return Ok(HttpResponse::NotImplemented()
             .reason("Data type does not have an image renderer implemented")
             .finish()),
@@ -467,6 +464,7 @@ struct Options {
 
 struct AppState {
     n5cache: Arc<N5CacheReader<N5Filesystem>>,
+    max_tile_prealloc: usize,
     max_tile_size: TileSize,
 }
 
@@ -503,22 +501,23 @@ mod actix_middleware_kludge {
 fn main() -> std::io::Result<()> {
 
     let opt = Options::from_args();
-    let root_path = opt.root_path.to_str().expect("N5 root path must be UTF-8");
-    let n5 = N5Filesystem::open(root_path).expect("Failed to open N5");
+    let root_path = opt.root_path.to_str()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Paths must be UTF-8"))?;
+    let n5 = N5Filesystem::open(root_path)?;
     let n5cache = Arc::new(N5CacheReader::wrap(n5, opt.ds_block_cache_size));
-    let max_tile_size = opt.max_tile_size.clone();
-    let cors = opt.cors.clone();
+    let max_tile_prealloc = opt.max_tile_prealloc;
+    let max_tile_size = opt.max_tile_size;
+    let cors = opt.cors;
     env_logger::init();
 
     let mut server = HttpServer::new(
-        || {
+        move || {
             use crate::actix_middleware_kludge::WrapCondition;
 
-            let opt = Options::from_args();
-            let cors = opt.cors;
             App::new()
                 .data(AppState {
                     n5cache: n5cache.clone(),
+                    max_tile_prealloc,
                     max_tile_size: max_tile_size.clone(),
                 })
                 .wrap(actix_web::middleware::Logger::default())
