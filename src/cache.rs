@@ -2,17 +2,22 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::sync::RwLock;
 
+use anymap::{any::Any, Map};
 use lru_cache::LruCache;
 use n5::prelude::*;
+use n5::{
+    ReadableDataBlock,
+    ReinitDataBlock,
+};
 
 
 type DatasetBlockCache<BT> = LruCache<GridCoord, Option<VecDataBlock<BT>>>;
 
-struct BlockCache<BT: Clone> {
+struct BlockCache<BT: ReflectedType> {
     blocks: RwLock<HashMap<String, RwLock<DatasetBlockCache<BT>>>>,
 }
 
-impl<BT: Clone> BlockCache<BT> {
+impl<BT: ReflectedType> BlockCache<BT> {
     fn new() -> Self {
         BlockCache {
             blocks: RwLock::new(HashMap::new()),
@@ -24,24 +29,11 @@ impl<BT: Clone> BlockCache<BT> {
     }
 }
 
-trait TypeCacheable<T: Clone> {
-    fn cache(&self) -> &BlockCache<T>;
-}
-
 pub struct N5CacheReader<N: N5Reader> {
     reader: N,
     blocks_capacity: usize,
     attr_cache: RwLock<HashMap<String, DatasetAttributes>>,
-    cache_i8: BlockCache<i8>,
-    cache_i16: BlockCache<i16>,
-    cache_i32: BlockCache<i32>,
-    cache_i64: BlockCache<i64>,
-    cache_u8: BlockCache<u8>,
-    cache_u16: BlockCache<u16>,
-    cache_u32: BlockCache<u32>,
-    cache_u64: BlockCache<u64>,
-    cache_f32: BlockCache<f32>,
-    cache_f64: BlockCache<f64>,
+    cache: Map<dyn Any + Send + Sync>,
 }
 
 impl<N: N5Reader> N5CacheReader<N> {
@@ -49,71 +41,40 @@ impl<N: N5Reader> N5CacheReader<N> {
         reader: N,
         blocks_capacity: usize,
     ) -> Self {
+        let mut cache = Map::new();
+        cache.insert(BlockCache::<i8>::new());
+        cache.insert(BlockCache::<i16>::new());
+        cache.insert(BlockCache::<i32>::new());
+        cache.insert(BlockCache::<i64>::new());
+        cache.insert(BlockCache::<u8>::new());
+        cache.insert(BlockCache::<u16>::new());
+        cache.insert(BlockCache::<u32>::new());
+        cache.insert(BlockCache::<u64>::new());
+        cache.insert(BlockCache::<f32>::new());
+        cache.insert(BlockCache::<f64>::new());
         Self {
             reader,
             blocks_capacity,
             attr_cache: RwLock::new(HashMap::new()),
-            cache_i8: BlockCache::new(),
-            cache_i16: BlockCache::new(),
-            cache_i32: BlockCache::new(),
-            cache_i64: BlockCache::new(),
-            cache_u8: BlockCache::new(),
-            cache_u16: BlockCache::new(),
-            cache_u32: BlockCache::new(),
-            cache_u64: BlockCache::new(),
-            cache_f32: BlockCache::new(),
-            cache_f64: BlockCache::new(),
+            cache,
         }
     }
 
     #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.attr_cache.write().unwrap().clear();
-        self.cache_i8.clear();
-        self.cache_i16.clear();
-        self.cache_i32.clear();
-        self.cache_i64.clear();
-        self.cache_u8.clear();
-        self.cache_u16.clear();
-        self.cache_u32.clear();
-        self.cache_u64.clear();
-        self.cache_f32.clear();
-        self.cache_f64.clear();
+        self.cache.get_mut::<BlockCache<i8>>().unwrap().clear();
+        self.cache.get_mut::<BlockCache<i16>>().unwrap().clear();
+        self.cache.get_mut::<BlockCache<i32>>().unwrap().clear();
+        self.cache.get_mut::<BlockCache<i64>>().unwrap().clear();
+        self.cache.get_mut::<BlockCache<u8>>().unwrap().clear();
+        self.cache.get_mut::<BlockCache<u16>>().unwrap().clear();
+        self.cache.get_mut::<BlockCache<u32>>().unwrap().clear();
+        self.cache.get_mut::<BlockCache<u64>>().unwrap().clear();
+        self.cache.get_mut::<BlockCache<f32>>().unwrap().clear();
+        self.cache.get_mut::<BlockCache<f64>>().unwrap().clear();
     }
 }
-
-// TODO: may be able to remove this specialization-based hack by using
-// any `Any`/`TypeId` based approach similar to the `TypeMap` from the
-// `polymap` crate.
-impl <N: N5Reader, T> TypeCacheable<T> for N5CacheReader<N>
-where
-                  VecDataBlock<T>: DataBlock<T>,
-                  T: ReflectedType {
-    default fn cache(&self) -> &BlockCache<T> {
-        unimplemented!()
-    }
-}
-
-macro_rules! type_cacheable {
-    ($ty_name:ty, $field:ident) => {
-        impl<N: N5Reader> TypeCacheable<$ty_name> for N5CacheReader<N> {
-            fn cache(&self) -> &BlockCache<$ty_name> {
-                &self.$field
-            }
-        }
-    }
-}
-
-type_cacheable!(i8, cache_i8);
-type_cacheable!(i16, cache_i16);
-type_cacheable!(i32, cache_i32);
-type_cacheable!(i64, cache_i64);
-type_cacheable!(u8, cache_u8);
-type_cacheable!(u16, cache_u16);
-type_cacheable!(u32, cache_u32);
-type_cacheable!(u64, cache_u64);
-type_cacheable!(f32, cache_f32);
-type_cacheable!(f64, cache_f64);
 
 impl<N: N5Reader> N5Reader for N5CacheReader<N> {
     fn get_version(&self) -> Result<n5::Version, Error> {
@@ -139,7 +100,7 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         self.reader.exists(path_name)
     }
 
-    fn get_block_uri(&self, path_name: &str, grid_position: &[i64]) -> Result<String, Error> {
+    fn get_block_uri(&self, path_name: &str, grid_position: &[u64]) -> Result<String, Error> {
         self.reader.get_block_uri(path_name, grid_position)
     }
 
@@ -149,10 +110,10 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         data_attrs: &DatasetAttributes,
         grid_position: GridCoord,
     ) -> Result<Option<VecDataBlock<T>>, Error>
-            where VecDataBlock<T>: DataBlock<T>,
+            where VecDataBlock<T>: DataBlock<T> + ReadableDataBlock,
                   T: ReflectedType {
 
-        let cache = self.cache();
+        let cache = self.cache.get::<BlockCache<T>>().unwrap();
 
         if cache.blocks.read().unwrap().get(path_name).is_none() {
             cache.blocks.write().unwrap()
@@ -180,21 +141,62 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         Ok(block)
     }
 
-    fn read_block_into<T: ReflectedType, B: DataBlock<T>>(
+    fn read_block_into<T: ReflectedType, B: DataBlock<T> + ReinitDataBlock<T> + ReadableDataBlock>(
         &self,
-        _path_name: &str,
-        _data_attrs: &DatasetAttributes,
-        _grid_position: GridCoord,
-        _block: &mut B,
+        path_name: &str,
+        data_attrs: &DatasetAttributes,
+        grid_position: GridCoord,
+        block: &mut B,
     ) -> Result<Option<()>, Error> {
-        unimplemented!()
+
+        let cache = self.cache.get::<BlockCache<T>>().unwrap();
+
+        if cache.blocks.read().unwrap().get(path_name).is_none() {
+            cache.blocks.write().unwrap()
+                .entry(path_name.to_owned())
+                .or_insert_with(|| RwLock::new(LruCache::new(self.blocks_capacity)));
+        }
+
+        {
+            // Done in a separate scope to not hold any locks while reading
+            // blocks on a cache miss.
+            // Have to explicitly write these out to satisfy pre-NLL rust borrowck.
+            let cache_lock = cache.blocks.read().unwrap();
+            let ds_cache = &cache_lock[path_name];
+            let mut ds_block_cache = ds_cache.write().unwrap();
+
+            if let Some(maybe_block) = ds_block_cache.get_mut(&grid_position[..]) {
+                return match maybe_block {
+                    Some(existing_block) => {
+                        block.reinitialize_with(existing_block);
+                        Ok(Some(()))
+                    }
+                    None => Ok(None)
+                };
+            }
+        }
+
+        let maybe = self.reader.read_block_into(path_name, data_attrs, grid_position.clone(), block)?;
+        let ds_cache = &cache.blocks.read().unwrap()[path_name];
+        let maybe_block = match maybe {
+            Some(_) => {
+                Some(VecDataBlock::new(
+                    block.get_size().into(),
+                    block.get_grid_position().into(),
+                    block.get_data().into()))
+            }
+            None => None
+        };
+        ds_cache.write().unwrap().insert(grid_position, maybe_block);
+
+        Ok(maybe)
     }
 
     fn block_metadata(
         &self,
         path_name: &str,
         data_attrs: &DatasetAttributes,
-        grid_position: &[i64],
+        grid_position: &[u64],
     ) -> Result<Option<DataBlockMetadata>, Error> {
         self.reader.block_metadata(path_name, data_attrs, grid_position)
     }
