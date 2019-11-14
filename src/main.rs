@@ -14,7 +14,9 @@ use n5::{
     DatasetAttributes,
     DataType,
     N5Reader,
+    ReinitDataBlock,
     ReflectedType,
+    ReadableDataBlock,
 };
 use n5::filesystem::{
     N5Filesystem,
@@ -349,20 +351,17 @@ fn read_and_encode<T, N: N5Reader, W: Write>(
     spec: &TileSpec,
     writer: &mut W,
 ) -> Result<(), std::io::Error>
-where n5::VecDataBlock<T>: n5::DataBlock<T>,
+where n5::VecDataBlock<T>: n5::DataBlock<T> + ReinitDataBlock<T> + ReadableDataBlock,
       T: ReflectedType + num_traits::identities::Zero {
 
     // Express the spec tile as an N-dim bounding box.
-    let mut size = smallvec![1i64; data_attrs.get_dimensions().len()];
-    size[spec.slicing_dims.plane_dims[0] as usize] = i64::from(spec.tile_size.w);
-    size[spec.slicing_dims.plane_dims[1] as usize] = i64::from(spec.tile_size.h);
+    let mut size = smallvec![1u64; data_attrs.get_dimensions().len()];
+    size[spec.slicing_dims.plane_dims[0] as usize] = u64::from(spec.tile_size.w);
+    size[spec.slicing_dims.plane_dims[1] as usize] = u64::from(spec.tile_size.h);
     if let Some(dim) = spec.slicing_dims.channel_dim {
         size[dim as usize] = data_attrs.get_dimensions()[dim as usize];
     }
-    let bbox = BoundingBox::new(
-        spec.coordinates.iter().map(|n| *n as i64).collect(),
-        size,
-    );
+    let bbox = BoundingBox::new(spec.coordinates.clone(), size);
 
     // Read the N-dim slab of blocks containing the tile from N5.
     let slab = n.read_ndarray::<T>(
