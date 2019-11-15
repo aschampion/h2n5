@@ -5,6 +5,10 @@ H2N5 is:
 - ~~[(E)-Hydrazinylidenehydrazinylidene]azanide~~
 - HTTP 2 N5: A simple program to serve N5 datasets over HTTP as tiled image stacks
 
+## Minimum supported Rust version (MSRV)
+
+Stable 1.39
+
 ## Quick start
 
 ```
