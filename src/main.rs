@@ -75,7 +75,7 @@ impl EncodingFormat {
         &self,
         writer: &mut W,
         bytes: &[u8],
-        tile_size: &TileSize,
+        tile_size: TileSize,
         image_color_type: image::ColorType,
     ) -> Result<(), std::io::Error> {
         match *self {
@@ -216,7 +216,7 @@ impl ResponseError for TileSpecError {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 struct TileSize {
     w: u32,
     h: u32,
@@ -302,8 +302,8 @@ impl FromStr for TileSpec {
 }
 
 #[allow(unknown_lints)]
-fn tile(
-    state: Data<AppState>,
+fn tile<N: N5Reader>(
+    state: Data<AppState<N>>,
     req: HttpRequest,
     query: Query<HashMap<String, String>>,
 ) -> Result<HttpResponse> {
@@ -322,7 +322,7 @@ fn tile(
             .finish());
     }
 
-    let n = &state.n5cache;
+    let n = &state.n5;
     let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
     // Allocate a buffer large enough for the uncompressed tile, as the
     // compressed size will be less with high probability.
@@ -403,7 +403,7 @@ where n5::VecDataBlock<T>: n5::DataBlock<T> + ReinitDataBlock<T> + ReadableDataB
     // Get the image data as a byte slice.
     let bytes: &[u8] = unsafe { as_u8_slice(&data) };
 
-    spec.format.encode(writer, bytes, &spec.tile_size, image_color_type)
+    spec.format.encode(writer, bytes, spec.tile_size, image_color_type)
 }
 
 // Get the byte slice of a vec slice in a wrapper function
@@ -454,15 +454,31 @@ struct Options {
     #[structopt(long = "max-tile-size", default_value = "4096,4096")]
     max_tile_size: TileSize,
 
+    /// Whether to cache blocks
+    #[structopt(long = "ds-block-cache")]
+    ds_block_cache: bool,
+
     /// Cache size (in blocks) per dataset
     #[structopt(long = "ds-block-cache-size", default_value = "1024")]
     ds_block_cache_size: usize,
 }
 
-struct AppState {
-    n5cache: Arc<N5CacheReader<N5Filesystem>>,
+struct AppState<N: N5Reader> {
+    n5: Arc<N>,
     max_tile_prealloc: usize,
     max_tile_size: TileSize,
+}
+
+// Must manually implement Clone because derive on generics requires them
+// to be Clone even when inside an Arc (open bug).
+impl<N: N5Reader> Clone for AppState<N> {
+    fn clone(&self) -> Self {
+        AppState {
+            n5: self.n5.clone(),
+            max_tile_prealloc: self.max_tile_prealloc,
+            max_tile_size: self.max_tile_size,
+        }
+    }
 }
 
 mod actix_middleware_kludge {
@@ -501,9 +517,27 @@ fn main() -> std::io::Result<()> {
     let root_path = opt.root_path.to_str()
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Paths must be UTF-8"))?;
     let n5 = N5Filesystem::open(root_path)?;
-    let n5cache = Arc::new(N5CacheReader::wrap(n5, opt.ds_block_cache_size));
     let max_tile_prealloc = opt.max_tile_prealloc;
     let max_tile_size = opt.max_tile_size;
+
+    if opt.ds_block_cache {
+        let state = AppState {
+            n5: Arc::new(N5CacheReader::wrap(n5, opt.ds_block_cache_size)),
+            max_tile_prealloc,
+            max_tile_size,
+        };
+        run_server(opt, state)
+    } else {
+        let state = AppState {
+            n5: Arc::new(n5),
+            max_tile_prealloc,
+            max_tile_size,
+        };
+        run_server(opt, state)
+    }
+}
+
+fn run_server<N: N5Reader + Send + Sync + 'static>(opt: Options, state: AppState<N>) -> std::io::Result<()> {
     let cors = opt.cors;
     env_logger::init();
 
@@ -512,15 +546,11 @@ fn main() -> std::io::Result<()> {
             use crate::actix_middleware_kludge::WrapCondition;
 
             App::new()
-                .data(AppState {
-                    n5cache: n5cache.clone(),
-                    max_tile_prealloc,
-                    max_tile_size: max_tile_size.clone(),
-                })
+                .data(state.clone())
                 .wrap(actix_web::middleware::Logger::default())
                 .service(
                     web::resource("/tile/{spec:.*}")
-                        .route(web::get().to(tile))
+                        .route(web::get().to(tile::<N>))
                 )
                 .wrap(WrapCondition::new(cors, Cors::new().send_wildcard()))
         })
