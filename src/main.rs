@@ -172,39 +172,16 @@ impl FromStr for ChannelPacking {
     }
 }
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 enum TileSpecError {
-    InvalidValue(std::num::ParseIntError),
+    #[error("Invalid value for tiling parameter: {0}")]
+    InvalidValue(#[from] std::num::ParseIntError),
+    #[error("Tiling request path was malformed")]
     MalformedPath,
+    #[error("Unknown encoding format")]
     UnknownEncodingFormat,
+    #[error("Unknown channel packing")]
     UnknownChannelPacking,
-}
-
-impl std::fmt::Display for TileSpecError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use std::error::Error;
-        match *self {
-            TileSpecError::InvalidValue(ref e) => write!(f, "{}: {}", self.description(), e),
-            _ => write!(f, "{}", self.description()),
-        }
-    }
-}
-
-impl std::error::Error for TileSpecError {
-    fn description(&self) -> &str {
-        match *self {
-            TileSpecError::InvalidValue(_) => "Invalid value for tiling parameter",
-            TileSpecError::MalformedPath => "Tiling request path was malformed",
-            TileSpecError::UnknownEncodingFormat => "Unknown encoding format",
-            TileSpecError::UnknownChannelPacking => "Unknown channel packing",
-        }
-    }
-}
-
-impl From<std::num::ParseIntError> for TileSpecError {
-    fn from(e: std::num::ParseIntError) -> TileSpecError {
-        TileSpecError::InvalidValue(e)
-    }
 }
 
 impl ResponseError for TileSpecError {
