@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::io::Write;
 use std::num::ParseIntError;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -10,24 +9,18 @@ use actix_web::web::Data;
 use actix_web::web::Query;
 use actix_web::*;
 use n5::filesystem::N5Filesystem;
-use n5::ndarray::prelude::*;
-use n5::smallvec::{
-    smallvec,
-    SmallVec,
-};
+use n5::smallvec::SmallVec;
 use n5::{
     DataType,
-    DatasetAttributes,
     N5Reader,
-    ReadableDataBlock,
-    ReflectedType,
-    ReinitDataBlock,
 };
 use structopt::StructOpt;
 
 mod cache;
+mod encoding;
 
 use cache::N5CacheReader;
+use encoding::*;
 
 #[derive(Debug, PartialEq)]
 struct SlicingDims {
@@ -40,67 +33,10 @@ trait QueryConfigurable {
     fn configure(&mut self, params: &HashMap<String, String>);
 }
 
-#[derive(Debug, PartialEq)]
-struct JpegParameters {
-    quality: u8,
-}
-
-impl Default for JpegParameters {
-    fn default() -> JpegParameters {
-        JpegParameters { quality: 100 }
-    }
-}
-
 impl QueryConfigurable for JpegParameters {
     fn configure(&mut self, params: &HashMap<String, String>) {
         if let Some(q) = params.get("q").and_then(|q| q.parse::<u8>().ok()) {
             self.quality = q;
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-enum EncodingFormat {
-    Jpeg(JpegParameters),
-    Png,
-}
-
-impl EncodingFormat {
-    fn encode<W: Write>(
-        &self,
-        writer: &mut W,
-        bytes: &[u8],
-        tile_size: TileSize,
-        image_color_type: image::ColorType,
-    ) -> Result<(), image::ImageError> {
-        match *self {
-            EncodingFormat::Jpeg(ref p) => {
-                let mut encoder = image::jpeg::JPEGEncoder::new_with_quality(writer, p.quality);
-                encoder.encode(bytes, tile_size.w, tile_size.h, image_color_type)
-            }
-            EncodingFormat::Png => {
-                let encoder = image::png::PNGEncoder::new(writer);
-                encoder.encode(bytes, tile_size.w, tile_size.h, image_color_type)
-            }
-        }
-    }
-
-    fn content_type(&self) -> &'static str {
-        match *self {
-            EncodingFormat::Jpeg(_) => "image/jpeg",
-            EncodingFormat::Png => "image/png",
-        }
-    }
-}
-
-impl FromStr for EncodingFormat {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "jpg" | "jpeg" => Ok(EncodingFormat::Jpeg(JpegParameters::default())),
-            "png" => Ok(EncodingFormat::Png),
-            _ => Err(()),
         }
     }
 }
@@ -114,13 +50,6 @@ impl QueryConfigurable for EncodingFormat {
     }
 }
 
-#[derive(Debug, PartialEq)]
-enum ChannelPacking {
-    Gray,
-    GrayA,
-    RGBA,
-}
-
 impl ChannelPacking {
     fn from_query(params: &HashMap<String, String>) -> Result<Self, ()> {
         if let Some(pack) = params.get("pack") {
@@ -129,37 +58,10 @@ impl ChannelPacking {
             Ok(ChannelPacking::default())
         }
     }
-
-    fn num_channels(&self) -> u8 {
-        match self {
-            ChannelPacking::Gray => 1,
-            ChannelPacking::GrayA => 2,
-            ChannelPacking::RGBA => 4,
-        }
-    }
-}
-
-impl Default for ChannelPacking {
-    fn default() -> Self {
-        ChannelPacking::Gray
-    }
-}
-
-impl FromStr for ChannelPacking {
-    type Err = (); // TODO
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "gray" => Ok(ChannelPacking::Gray),
-            "graya" => Ok(ChannelPacking::GrayA),
-            "rgba" => Ok(ChannelPacking::RGBA),
-            _ => Err(()),
-        }
-    }
 }
 
 #[derive(thiserror::Error, Debug)]
-enum TileSpecError {
+pub enum TileSpecError {
     #[error("Invalid value for tiling parameter: {0}")]
     InvalidValue(#[from] std::num::ParseIntError),
     #[error("Tiling request path was malformed")]
@@ -202,7 +104,7 @@ impl std::fmt::Display for TileSize {
 }
 
 #[derive(Debug)]
-struct TileSpec {
+pub struct TileSpec {
     n5_dataset: String,
     slicing_dims: SlicingDims,
     tile_size: TileSize,
@@ -322,14 +224,6 @@ fn tile<N: N5Reader>(
         .body(tile_buffer))
 }
 
-#[derive(thiserror::Error, Debug)]
-enum EncodingError {
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    Image(#[from] image::ImageError),
-}
-
 impl ResponseError for EncodingError {
     fn error_response(&self) -> HttpResponse {
         match *self {
@@ -339,84 +233,6 @@ impl ResponseError for EncodingError {
             }
         }
     }
-}
-
-// TODO: Single channel only.
-fn read_and_encode<T, N: N5Reader, W: Write>(
-    n: &N,
-    data_attrs: &DatasetAttributes,
-    spec: &TileSpec,
-    writer: &mut W,
-) -> Result<(), EncodingError>
-where
-    n5::VecDataBlock<T>: n5::DataBlock<T> + ReinitDataBlock<T> + ReadableDataBlock,
-    T: ReflectedType + num_traits::identities::Zero,
-{
-    // Express the spec tile as an N-dim bounding box.
-    let mut size = smallvec![1u64; data_attrs.get_dimensions().len()];
-    size[spec.slicing_dims.plane_dims[0] as usize] = u64::from(spec.tile_size.w);
-    size[spec.slicing_dims.plane_dims[1] as usize] = u64::from(spec.tile_size.h);
-    if let Some(dim) = spec.slicing_dims.channel_dim {
-        size[dim as usize] = data_attrs.get_dimensions()[dim as usize];
-    }
-    let bbox = BoundingBox::new(spec.coordinates.clone(), size);
-
-    // Read the N-dim slab of blocks containing the tile from N5.
-    let slab = n.read_ndarray::<T>(&spec.n5_dataset, data_attrs, &bbox)?;
-
-    let image_color_type = match spec.slicing_dims.channel_dim {
-        Some(_dim) => {
-            // TODO: match RGB/RGBA based on dimensions of dim.
-            // Permute slab so that channels dimension is at end.
-            unimplemented!()
-        }
-        None => {
-            let bits_per_channel = 8 / spec.packing.num_channels() * std::mem::size_of::<T>() as u8;
-            match bits_per_channel {
-                // Wow, this is so much better than just specifying my channels and BPC! /s
-                8 => match spec.packing {
-                    ChannelPacking::Gray => image::ColorType::L8,
-                    ChannelPacking::GrayA => image::ColorType::La8,
-                    ChannelPacking::RGBA => image::ColorType::Rgba8,
-                },
-                16 => match spec.packing {
-                    ChannelPacking::Gray => image::ColorType::L16,
-                    ChannelPacking::GrayA => image::ColorType::La16,
-                    ChannelPacking::RGBA => image::ColorType::Rgba16,
-                },
-                _ => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Packed bits per channel must be 8 or 16",
-                    )
-                    .into())
-                }
-            }
-        }
-    };
-
-    let data = if spec.slicing_dims.plane_dims[0] > spec.slicing_dims.plane_dims[1] {
-        // Note, this works correctly because the slab is f-order.
-        slab.into_iter().cloned().collect()
-    } else {
-        slab.into_raw_vec()
-    };
-
-    // Get the image data as a byte slice.
-    let bytes: &[u8] = unsafe { as_u8_slice(&data) };
-
-    spec.format
-        .encode(writer, bytes, spec.tile_size, image_color_type)
-        .map_err(Into::into)
-}
-
-// Get the byte slice of a vec slice in a wrapper function
-// so that the lifetime is bound to the original slice's lifetime.
-unsafe fn as_u8_slice<T>(s: &[T]) -> &[u8] {
-    std::slice::from_raw_parts(
-        s as *const [T] as *const u8,
-        s.len() * std::mem::size_of::<T>(),
-    )
 }
 
 /// Serve N5 datasets over HTTP as tiled image stacks.
