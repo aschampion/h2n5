@@ -2,14 +2,16 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::sync::RwLock;
 
-use anymap::{any::Any, Map};
+use anymap::{
+    any::Any,
+    Map,
+};
 use lru_cache::LruCache;
 use n5::prelude::*;
 use n5::{
     ReadableDataBlock,
     ReinitDataBlock,
 };
-
 
 type DatasetBlockCache<BT> = LruCache<GridCoord, Option<VecDataBlock<BT>>>;
 
@@ -37,10 +39,7 @@ pub struct N5CacheReader<N: N5Reader> {
 }
 
 impl<N: N5Reader> N5CacheReader<N> {
-    pub fn wrap(
-        reader: N,
-        blocks_capacity: usize,
-    ) -> Self {
+    pub fn wrap(reader: N, blocks_capacity: usize) -> Self {
         let mut cache = Map::new();
         cache.insert(BlockCache::<i8>::new());
         cache.insert(BlockCache::<i16>::new());
@@ -81,9 +80,7 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         self.reader.get_version()
     }
 
-    fn get_dataset_attributes(&self, path_name: &str) ->
-        Result<n5::DatasetAttributes, Error> {
-
+    fn get_dataset_attributes(&self, path_name: &str) -> Result<n5::DatasetAttributes, Error> {
         {
             if let Some(data_attrs) = self.attr_cache.read().unwrap().get(path_name) {
                 return Ok(data_attrs.clone());
@@ -91,7 +88,10 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         }
 
         let data_attrs = self.reader.get_dataset_attributes(path_name)?;
-        self.attr_cache.write().unwrap().insert(path_name.to_owned(), data_attrs.clone());
+        self.attr_cache
+            .write()
+            .unwrap()
+            .insert(path_name.to_owned(), data_attrs.clone());
 
         Ok(data_attrs)
     }
@@ -110,13 +110,17 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         data_attrs: &DatasetAttributes,
         grid_position: GridCoord,
     ) -> Result<Option<VecDataBlock<T>>, Error>
-            where VecDataBlock<T>: DataBlock<T> + ReadableDataBlock,
-                  T: ReflectedType {
-
+    where
+        VecDataBlock<T>: DataBlock<T> + ReadableDataBlock,
+        T: ReflectedType,
+    {
         let cache = self.cache.get::<BlockCache<T>>().unwrap();
 
         if cache.blocks.read().unwrap().get(path_name).is_none() {
-            cache.blocks.write().unwrap()
+            cache
+                .blocks
+                .write()
+                .unwrap()
                 .entry(path_name.to_owned())
                 .or_insert_with(|| RwLock::new(LruCache::new(self.blocks_capacity)));
         }
@@ -130,29 +134,39 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
             let mut ds_block_cache = ds_cache.write().unwrap();
 
             if let Some(block) = ds_block_cache.get_mut(&grid_position[..]) {
-                return Ok(block.clone())
+                return Ok(block.clone());
             }
         }
 
-        let block = self.reader.read_block(path_name, data_attrs, grid_position.clone())?;
+        let block = self
+            .reader
+            .read_block(path_name, data_attrs, grid_position.clone())?;
         let ds_cache = &cache.blocks.read().unwrap()[path_name];
-        ds_cache.write().unwrap().insert(grid_position, block.clone());
+        ds_cache
+            .write()
+            .unwrap()
+            .insert(grid_position, block.clone());
 
         Ok(block)
     }
 
-    fn read_block_into<T: ReflectedType, B: DataBlock<T> + ReinitDataBlock<T> + ReadableDataBlock>(
+    fn read_block_into<
+        T: ReflectedType,
+        B: DataBlock<T> + ReinitDataBlock<T> + ReadableDataBlock,
+    >(
         &self,
         path_name: &str,
         data_attrs: &DatasetAttributes,
         grid_position: GridCoord,
         block: &mut B,
     ) -> Result<Option<()>, Error> {
-
         let cache = self.cache.get::<BlockCache<T>>().unwrap();
 
         if cache.blocks.read().unwrap().get(path_name).is_none() {
-            cache.blocks.write().unwrap()
+            cache
+                .blocks
+                .write()
+                .unwrap()
                 .entry(path_name.to_owned())
                 .or_insert_with(|| RwLock::new(LruCache::new(self.blocks_capacity)));
         }
@@ -171,21 +185,22 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
                         block.reinitialize_with(existing_block);
                         Ok(Some(()))
                     }
-                    None => Ok(None)
+                    None => Ok(None),
                 };
             }
         }
 
-        let maybe = self.reader.read_block_into(path_name, data_attrs, grid_position.clone(), block)?;
+        let maybe =
+            self.reader
+                .read_block_into(path_name, data_attrs, grid_position.clone(), block)?;
         let ds_cache = &cache.blocks.read().unwrap()[path_name];
         let maybe_block = match maybe {
-            Some(_) => {
-                Some(VecDataBlock::new(
-                    block.get_size().into(),
-                    block.get_grid_position().into(),
-                    block.get_data().into()))
-            }
-            None => None
+            Some(_) => Some(VecDataBlock::new(
+                block.get_size().into(),
+                block.get_grid_position().into(),
+                block.get_data().into(),
+            )),
+            None => None,
         };
         ds_cache.write().unwrap().insert(grid_position, maybe_block);
 
@@ -198,7 +213,8 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         data_attrs: &DatasetAttributes,
         grid_position: &[u64],
     ) -> Result<Option<DataBlockMetadata>, Error> {
-        self.reader.block_metadata(path_name, data_attrs, grid_position)
+        self.reader
+            .block_metadata(path_name, data_attrs, grid_position)
     }
 
     fn list_attributes(&self, path_name: &str) -> Result<serde_json::Value, Error> {
