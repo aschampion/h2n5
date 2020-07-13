@@ -121,9 +121,8 @@ impl FromStr for EncodingFormat {
 impl QueryConfigurable for EncodingFormat {
     #[allow(unknown_lints)]
     fn configure(&mut self, params: &HashMap<String, String>) {
-        match *self {
-            EncodingFormat::Jpeg(ref mut p) => p.configure(params),
-            _ => (),
+        if let EncodingFormat::Jpeg(ref mut p) = self {
+            p.configure(params);
         }
     }
 }
@@ -186,10 +185,8 @@ enum TileSpecError {
 
 impl ResponseError for TileSpecError {
     fn error_response(&self) -> HttpResponse {
-        match *self {
-            _ => HttpResponse::build(http::StatusCode::BAD_REQUEST)
-                    .body(self.to_string()),
-        }
+        HttpResponse::build(http::StatusCode::BAD_REQUEST)
+                .body(self.to_string())
     }
 }
 
