@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+
+## [0.1.5] - 2020-07-13
+### Added
+- An optional LRU memory cache for tiles can be enabled with the `--tile-cache`
+  option. The size of the cache (in tiles) globally can be configured with the
+  `--tile-cache-size` option. HTTP server caching should be preferred for
+  production deployments, but this option is useful for temporary cases.
+
+### Fixed
+- Fixes from dependencies include a bug that caused n5 to corrupt the version
+  attribute when opening datasets and extremely rare cases where PNG tiles
+  would be corrupted during compression.
+
 ## [0.1.4] - 2019-11-15
 ### Added
 - An optional LRU memory cache for blocks can be enabled with the
