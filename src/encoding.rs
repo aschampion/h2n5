@@ -1,8 +1,6 @@
 use std::io::Write;
 use std::str::FromStr;
 
-use n5::ndarray::prelude::*;
-use n5::smallvec::smallvec;
 use n5::{
     DatasetAttributes,
     N5Reader,
@@ -11,10 +9,8 @@ use n5::{
     ReinitDataBlock,
 };
 
-use crate::{
-    TileSize,
-    TileSpec,
-};
+use crate::tiling::read_tile;
+use crate::TileImageSpec;
 
 #[derive(Debug, PartialEq)]
 pub struct JpegParameters {
@@ -38,17 +34,18 @@ impl EncodingFormat {
         &self,
         writer: &mut W,
         bytes: &[u8],
-        tile_size: TileSize,
+        width: u32,
+        height: u32,
         image_color_type: image::ColorType,
     ) -> Result<(), image::ImageError> {
         match *self {
             EncodingFormat::Jpeg(ref p) => {
                 let mut encoder = image::jpeg::JPEGEncoder::new_with_quality(writer, p.quality);
-                encoder.encode(bytes, tile_size.w, tile_size.h, image_color_type)
+                encoder.encode(bytes, width, height, image_color_type)
             }
             EncodingFormat::Png => {
                 let encoder = image::png::PNGEncoder::new(writer);
-                encoder.encode(bytes, tile_size.w, tile_size.h, image_color_type)
+                encoder.encode(bytes, width, height, image_color_type)
             }
         }
     }
@@ -117,30 +114,30 @@ pub enum EncodingError {
     Image(#[from] image::ImageError),
 }
 
-// TODO: Single channel only.
 pub fn read_and_encode<T, N: N5Reader, W: Write>(
     n: &N,
     data_attrs: &DatasetAttributes,
-    spec: &TileSpec,
+    spec: &TileImageSpec,
     writer: &mut W,
 ) -> Result<(), EncodingError>
 where
     n5::VecDataBlock<T>: n5::DataBlock<T> + ReinitDataBlock<T> + ReadableDataBlock,
     T: ReflectedType + num_traits::identities::Zero,
 {
-    // Express the spec tile as an N-dim bounding box.
-    let mut size = smallvec![1u64; data_attrs.get_dimensions().len()];
-    size[spec.slicing_dims.plane_dims[0] as usize] = u64::from(spec.tile_size.w);
-    size[spec.slicing_dims.plane_dims[1] as usize] = u64::from(spec.tile_size.h);
-    if let Some(dim) = spec.slicing_dims.channel_dim {
-        size[dim as usize] = data_attrs.get_dimensions()[dim as usize];
-    }
-    let bbox = BoundingBox::new(spec.coordinates.clone(), size);
+    let tile = read_tile(n, data_attrs, &spec.tile)?;
+    encode_tile(tile, spec, writer)
+}
 
-    // Read the N-dim slab of blocks containing the tile from N5.
-    let slab = n.read_ndarray::<T>(&spec.n5_dataset, data_attrs, &bbox)?;
-
-    let image_color_type = match spec.slicing_dims.channel_dim {
+// TODO: Single channel only.
+pub fn encode_tile<T, W: Write>(
+    tile: ndarray::Array<T, ndarray::Dim<ndarray::IxDynImpl>>,
+    spec: &TileImageSpec,
+    writer: &mut W,
+) -> Result<(), EncodingError>
+where
+    T: ReflectedType,
+{
+    let image_color_type = match spec.tile.slicing_dims.channel_dim {
         Some(_dim) => {
             // TODO: match RGB/RGBA based on dimensions of dim.
             // Permute slab so that channels dimension is at end.
@@ -171,18 +168,24 @@ where
         }
     };
 
-    let data = if spec.slicing_dims.plane_dims[0] > spec.slicing_dims.plane_dims[1] {
+    let data = if spec.tile.slicing_dims.plane_dims[0] > spec.tile.slicing_dims.plane_dims[1] {
         // Note, this works correctly because the slab is f-order.
-        slab.into_iter().cloned().collect()
+        tile.into_iter().cloned().collect()
     } else {
-        slab.into_raw_vec()
+        tile.into_raw_vec()
     };
 
     // Get the image data as a byte slice.
     let bytes: &[u8] = unsafe { as_u8_slice(&data) };
 
     spec.format
-        .encode(writer, bytes, spec.tile_size, image_color_type)
+        .encode(
+            writer,
+            bytes,
+            spec.tile.tile_size.w,
+            spec.tile.tile_size.h,
+            image_color_type,
+        )
         .map_err(Into::into)
 }
 

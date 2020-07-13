@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::num::ParseIntError;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -18,15 +17,11 @@ use structopt::StructOpt;
 
 mod cache;
 mod encoding;
+mod tiling;
 
 use cache::N5CacheReader;
 use encoding::*;
-
-#[derive(Debug, PartialEq)]
-struct SlicingDims {
-    plane_dims: [u32; 2],
-    channel_dim: Option<u32>,
-}
+use tiling::*;
 
 /// Trait for types that can be configured by URL query string parameters.
 trait QueryConfigurable {
@@ -61,7 +56,7 @@ impl ChannelPacking {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum TileSpecError {
+pub enum TileImageSpecError {
     #[error("Invalid value for tiling parameter: {0}")]
     InvalidValue(#[from] std::num::ParseIntError),
     #[error("Tiling request path was malformed")]
@@ -72,49 +67,21 @@ pub enum TileSpecError {
     UnknownChannelPacking,
 }
 
-impl ResponseError for TileSpecError {
+impl ResponseError for TileImageSpecError {
     fn error_response(&self) -> HttpResponse {
         HttpResponse::build(http::StatusCode::BAD_REQUEST).body(self.to_string())
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-struct TileSize {
-    w: u32,
-    h: u32,
-}
-
-impl FromStr for TileSize {
-    type Err = ParseIntError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let coords: SmallVec<[&str; 3]> = s.split(',').collect();
-
-        let w = coords[0].parse::<u32>()?;
-        let h = coords[1].parse::<u32>()?;
-
-        Ok(TileSize { w, h })
-    }
-}
-
-impl std::fmt::Display for TileSize {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{},{}", self.w, self.h)
-    }
-}
-
-#[derive(Debug)]
-pub struct TileSpec {
-    n5_dataset: String,
-    slicing_dims: SlicingDims,
-    tile_size: TileSize,
-    coordinates: SmallVec<[u64; 6]>,
+/// Specifies a tile to slice from a dataset and an image format to encode it.
+pub struct TileImageSpec {
+    tile: TileSpec,
     format: EncodingFormat,
     packing: ChannelPacking,
 }
 
-impl FromStr for TileSpec {
-    type Err = TileSpecError;
+impl FromStr for TileImageSpec {
+    type Err = TileImageSpecError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let re = regex::Regex::new(concat!(
@@ -122,7 +89,7 @@ impl FromStr for TileSpec {
             r"(?P<tile_size>\d+_\d+)(?P<coords>(/\d+)+)\.(?P<format>.+)$"
         ))
         .expect("Impossible: regex is valid");
-        let caps = re.captures(s).ok_or(TileSpecError::MalformedPath)?;
+        let caps = re.captures(s).ok_or(TileImageSpecError::MalformedPath)?;
 
         let n5_dataset = caps["dataset"].into();
         let mut sd_vals = caps["slicing"].split('_').map(u32::from_str);
@@ -146,15 +113,17 @@ impl FromStr for TileSpec {
             .collect::<Result<SmallVec<_>, _>>()?;
 
         let format = EncodingFormat::from_str(&caps["format"])
-            .map_err(|_| TileSpecError::UnknownEncodingFormat)?;
+            .map_err(|_| TileImageSpecError::UnknownEncodingFormat)?;
 
         let packing = ChannelPacking::default();
 
-        Ok(TileSpec {
-            n5_dataset,
-            slicing_dims,
-            tile_size,
-            coordinates,
+        Ok(TileImageSpec {
+            tile: TileSpec {
+                n5_dataset,
+                slicing_dims,
+                tile_size,
+                coordinates,
+            },
             format,
             packing,
         })
@@ -168,26 +137,29 @@ fn tile<N: N5Reader>(
     query: Query<HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     let spec = {
-        let mut spec = TileSpec::from_str(&req.match_info()["spec"])?;
+        let mut spec = TileImageSpec::from_str(&req.match_info()["spec"])?;
         spec.format.configure(&query);
-        spec.packing =
-            ChannelPacking::from_query(&query).map_err(|_| TileSpecError::UnknownChannelPacking)?;
+        spec.packing = ChannelPacking::from_query(&query)
+            .map_err(|_| TileImageSpecError::UnknownChannelPacking)?;
         spec
     };
 
-    if spec.tile_size.w > state.max_tile_size.w || spec.tile_size.h > state.max_tile_size.h {
+    if spec.tile.tile_size.w > state.max_tile_size.w
+        || spec.tile.tile_size.h > state.max_tile_size.h
+    {
         return Ok(HttpResponse::BadRequest()
             .reason("Maximum tile size exceeded")
             .finish());
     }
 
     let n = &state.n5;
-    let data_attrs = n.get_dataset_attributes(&spec.n5_dataset)?;
+    let data_attrs = n.get_dataset_attributes(&spec.tile.n5_dataset)?;
     // Allocate a buffer large enough for the uncompressed tile, as the
     // compressed size will be less with high probability.
-    let buffer_size = spec.tile_size.w as usize
-        * spec.tile_size.h as usize
+    let buffer_size = spec.tile.tile_size.w as usize
+        * spec.tile.tile_size.h as usize
         * spec
+            .tile
             .slicing_dims
             .channel_dim
             .map(|d| data_attrs.get_dimensions()[d as usize] as usize)
@@ -391,18 +363,18 @@ mod tests {
 
     #[test]
     fn test_tile_spec_parsing() {
-        let ts = TileSpec::from_str("my_test/dataset/0_1/512_512/3/2/1.jpg").unwrap();
+        let ts = TileImageSpec::from_str("my_test/dataset/0_1/512_512/3/2/1.jpg").unwrap();
 
-        assert_eq!(ts.n5_dataset, "my_test/dataset");
+        assert_eq!(ts.tile.n5_dataset, "my_test/dataset");
         assert_eq!(
-            ts.slicing_dims,
+            ts.tile.slicing_dims,
             SlicingDims {
                 plane_dims: [0u32, 1],
                 channel_dim: None,
             }
         );
-        assert_eq!(ts.tile_size, TileSize { w: 512, h: 512 });
-        assert_eq!(ts.coordinates, SmallVec::from([3u64, 2, 1]));
+        assert_eq!(ts.tile.tile_size, TileSize { w: 512, h: 512 });
+        assert_eq!(ts.tile.coordinates, SmallVec::from([3u64, 2, 1]));
         assert_eq!(ts.format, EncodingFormat::Jpeg(JpegParameters::default()));
     }
 }
