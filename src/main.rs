@@ -263,7 +263,7 @@ struct AppState<N: N5Reader> {
 }
 
 // Must manually implement Clone because derive on generics requires them
-// to be Clone even when inside an Arc (open bug).
+// to be Clone even when inside an Arc (open bug in Rust 26925).
 impl<N: N5Reader> Clone for AppState<N> {
     fn clone(&self) -> Self {
         AppState {
