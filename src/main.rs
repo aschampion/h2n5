@@ -77,7 +77,7 @@ impl EncodingFormat {
         bytes: &[u8],
         tile_size: TileSize,
         image_color_type: image::ColorType,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<(), image::ImageError> {
         match *self {
             EncodingFormat::Jpeg(ref p) => {
                 let mut encoder = image::jpeg::JPEGEncoder::new_with_quality(writer, p.quality);
@@ -325,13 +325,31 @@ fn tile<N: N5Reader>(
         .body(tile_buffer))
 }
 
+#[derive(thiserror::Error, Debug)]
+enum EncodingError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Image(#[from] image::ImageError),
+}
+
+impl ResponseError for EncodingError {
+    fn error_response(&self) -> HttpResponse {
+        match *self {
+            Self::Io(ref e) => e.error_response(),
+            Self::Image(_) => HttpResponse::build(http::StatusCode::BAD_REQUEST)
+                    .body(self.to_string()),
+        }
+    }
+}
+
 // TODO: Single channel only.
 fn read_and_encode<T, N: N5Reader, W: Write>(
     n: &N,
     data_attrs: &DatasetAttributes,
     spec: &TileSpec,
     writer: &mut W,
-) -> Result<(), std::io::Error>
+) -> Result<(), EncodingError>
 where n5::VecDataBlock<T>: n5::DataBlock<T> + ReinitDataBlock<T> + ReadableDataBlock,
       T: ReflectedType + num_traits::identities::Zero {
 
@@ -358,14 +376,20 @@ where n5::VecDataBlock<T>: n5::DataBlock<T> + ReinitDataBlock<T> + ReadableDataB
         },
         None => {
             let bits_per_channel = 8 / spec.packing.num_channels() * std::mem::size_of::<T>() as u8;
-            if bits_per_channel > 16 {
-                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
-                    "Packed bits per channel must be <= 16"));
-            }
-            match spec.packing {
-                ChannelPacking::Gray => image::ColorType::Gray(bits_per_channel),
-                ChannelPacking::GrayA => image::ColorType::GrayA(bits_per_channel),
-                ChannelPacking::RGBA => image::ColorType::RGBA(bits_per_channel),
+            match bits_per_channel {
+                // Wow, this is so much better than just specifying my channels and BPC! /s
+                8 => match spec.packing {
+                    ChannelPacking::Gray => image::ColorType::L8,
+                    ChannelPacking::GrayA => image::ColorType::La8,
+                    ChannelPacking::RGBA => image::ColorType::Rgba8,
+                },
+                16 => match spec.packing {
+                    ChannelPacking::Gray => image::ColorType::L16,
+                    ChannelPacking::GrayA => image::ColorType::La16,
+                    ChannelPacking::RGBA => image::ColorType::Rgba16,
+                },
+                _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
+                    "Packed bits per channel must be 8 or 16").into())
             }
         }
     };
@@ -380,7 +404,7 @@ where n5::VecDataBlock<T>: n5::DataBlock<T> + ReinitDataBlock<T> + ReadableDataB
     // Get the image data as a byte slice.
     let bytes: &[u8] = unsafe { as_u8_slice(&data) };
 
-    spec.format.encode(writer, bytes, spec.tile_size, image_color_type)
+    spec.format.encode(writer, bytes, spec.tile_size, image_color_type).map_err(Into::into)
 }
 
 // Get the byte slice of a vec slice in a wrapper function
