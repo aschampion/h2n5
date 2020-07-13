@@ -12,13 +12,13 @@ use n5::{
     ReinitDataBlock,
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub struct SlicingDims {
     pub plane_dims: [u32; 2],
     pub channel_dim: Option<u32>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct TileSize {
     pub w: u32,
     pub h: u32,
@@ -43,7 +43,7 @@ impl std::fmt::Display for TileSize {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub struct TileSpec {
     pub n5_dataset: String,
     pub slicing_dims: SlicingDims,

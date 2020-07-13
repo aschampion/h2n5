@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    RwLock,
+};
 
 use actix_cors::Cors;
 use actix_web::web::Data;
 use actix_web::web::Query;
 use actix_web::*;
+use lru_cache::LruCache;
 use n5::filesystem::N5Filesystem;
 use n5::smallvec::SmallVec;
 use n5::{
@@ -74,6 +78,7 @@ impl ResponseError for TileImageSpecError {
 }
 
 /// Specifies a tile to slice from a dataset and an image format to encode it.
+#[derive(PartialEq, Eq, Hash)]
 pub struct TileImageSpec {
     tile: TileSpec,
     format: EncodingFormat,
@@ -152,6 +157,15 @@ fn tile<N: N5Reader>(
             .finish());
     }
 
+    if let Some(cache) = &state.tile_cache {
+        let mut cache_lock = cache.write().unwrap();
+        if let Some(tile_buffer) = cache_lock.get_mut(&spec) {
+            return Ok(HttpResponse::Ok()
+                .content_type(spec.format.content_type())
+                .body(tile_buffer.clone()));
+        }
+    }
+
     let n = &state.n5;
     let data_attrs = n.get_dataset_attributes(&spec.tile.n5_dataset)?;
     // Allocate a buffer large enough for the uncompressed tile, as the
@@ -191,8 +205,14 @@ fn tile<N: N5Reader>(
                 .finish())
         }
     }
+
+    let content_type = spec.format.content_type();
+    if let Some(cache) = &state.tile_cache {
+        cache.write().unwrap().insert(spec, tile_buffer.clone());
+    }
+
     Ok(HttpResponse::Ok()
-        .content_type(spec.format.content_type())
+        .content_type(content_type)
         .body(tile_buffer))
 }
 
@@ -254,12 +274,23 @@ struct Options {
     /// Cache size (in blocks) per dataset
     #[structopt(long = "ds-block-cache-size", default_value = "1024")]
     ds_block_cache_size: usize,
+
+    /// Whether to cache tile images
+    #[structopt(long = "tile-cache")]
+    tile_cache: bool,
+
+    /// Cache size (in tiles) globally
+    #[structopt(long = "tile-cache-size", default_value = "1024")]
+    tile_cache_size: usize,
 }
+
+type TileCache = LruCache<TileImageSpec, Vec<u8>>;
 
 struct AppState<N: N5Reader> {
     n5: Arc<N>,
     max_tile_prealloc: usize,
     max_tile_size: TileSize,
+    tile_cache: Option<Arc<RwLock<TileCache>>>,
 }
 
 // Must manually implement Clone because derive on generics requires them
@@ -270,6 +301,7 @@ impl<N: N5Reader> Clone for AppState<N> {
             n5: self.n5.clone(),
             max_tile_prealloc: self.max_tile_prealloc,
             max_tile_size: self.max_tile_size,
+            tile_cache: self.tile_cache.clone(),
         }
     }
 }
@@ -316,12 +348,18 @@ fn main() -> std::io::Result<()> {
     let n5 = N5Filesystem::open(root_path)?;
     let max_tile_prealloc = opt.max_tile_prealloc;
     let max_tile_size = opt.max_tile_size;
+    let tile_cache = if opt.tile_cache {
+        Some(Arc::new(RwLock::new(TileCache::new(opt.tile_cache_size))))
+    } else {
+        None
+    };
 
     if opt.ds_block_cache {
         let state = AppState {
             n5: Arc::new(N5CacheReader::wrap(n5, opt.ds_block_cache_size)),
             max_tile_prealloc,
             max_tile_size,
+            tile_cache,
         };
         run_server(opt, state)
     } else {
@@ -329,6 +367,7 @@ fn main() -> std::io::Result<()> {
             n5: Arc::new(n5),
             max_tile_prealloc,
             max_tile_size,
+            tile_cache,
         };
         run_server(opt, state)
     }

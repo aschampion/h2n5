@@ -12,7 +12,7 @@ use n5::{
 use crate::tiling::read_tile;
 use crate::TileImageSpec;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub struct JpegParameters {
     pub(crate) quality: u8,
 }
@@ -23,7 +23,7 @@ impl Default for JpegParameters {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub enum EncodingFormat {
     Jpeg(JpegParameters),
     Png,
@@ -70,7 +70,7 @@ impl FromStr for EncodingFormat {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub enum ChannelPacking {
     Gray,
     GrayA,
