@@ -96,7 +96,7 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         Ok(data_attrs)
     }
 
-    fn exists(&self, path_name: &str) -> bool {
+    fn exists(&self, path_name: &str) -> Result<bool, Error> {
         self.reader.exists(path_name)
     }
 
@@ -201,11 +201,13 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
         self.reader.block_metadata(path_name, data_attrs, grid_position)
     }
 
-    fn list(&self, path_name: &str) -> Result<Vec<String>, Error> {
-        self.reader.list(path_name)
-    }
-
     fn list_attributes(&self, path_name: &str) -> Result<serde_json::Value, Error> {
         self.reader.list_attributes(path_name)
+    }
+}
+
+impl<N: N5Lister> N5Lister for N5CacheReader<N> {
+    fn list(&self, path_name: &str) -> Result<Vec<String>, Error> {
+        self.reader.list(path_name)
     }
 }
