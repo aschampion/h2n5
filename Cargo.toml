@@ -1,6 +1,6 @@
 [package]
 name = "h2n5"
-version = "0.1.6-pre"
+version = "0.1.6"
 edition = "2018"
 license = "MIT/Apache-2.0"
 authors = [
