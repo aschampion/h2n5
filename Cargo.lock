@@ -706,7 +706,7 @@ dependencies = [
 
 [[package]]
 name = "h2n5"
-version = "0.1.6"
+version = "0.1.7-pre"
 dependencies = [
  "actix-cors 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "actix-service 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
