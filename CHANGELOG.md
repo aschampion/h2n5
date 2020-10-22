@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed a soundness error in a dependency that caused a panic on Rust 1.48 and
   greater (see
   [this issue](https://github.com/contain-rs/linked-hash-map/pull/100)).
+- Reduced allocation frequency and size for encoded tiles.
 
 ## [0.1.6] - 2020-07-18
 ### Fixed

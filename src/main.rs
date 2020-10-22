@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -7,6 +8,7 @@ use std::sync::{
 };
 
 use actix_cors::Cors;
+use actix_web::web::Bytes;
 use actix_web::web::Data;
 use actix_web::web::Query;
 use actix_web::*;
@@ -159,45 +161,37 @@ fn tile<N: N5Reader>(
 
     if let Some(cache) = &state.tile_cache {
         let mut cache_lock = cache.write().unwrap();
-        if let Some(tile_buffer) = cache_lock.get_mut(&spec) {
+        if let Some(tile) = cache_lock.get_mut(&spec) {
             return Ok(HttpResponse::Ok()
                 .content_type(spec.format.content_type())
-                .body(tile_buffer.clone()));
+                .body(tile.clone()));
         }
     }
 
     let n = &state.n5;
     let data_attrs = n.get_dataset_attributes(&spec.tile.n5_dataset)?;
-    // Allocate a buffer large enough for the uncompressed tile, as the
-    // compressed size will be less with high probability.
-    let buffer_size = spec.tile.tile_size.w as usize
-        * spec.tile.tile_size.h as usize
-        * spec
-            .tile
-            .slicing_dims
-            .channel_dim
-            .map(|d| data_attrs.get_dimensions()[d as usize] as usize)
-            .unwrap_or(1)
-        * data_attrs.get_data_type().size_of();
-    let buffer_size = std::cmp::min(buffer_size, state.max_tile_prealloc);
-    let mut tile_buffer: Vec<u8> = Vec::with_capacity(buffer_size);
+    let mut buffer = state.tile_buffer.borrow_mut();
+    buffer.clear();
 
+    use std::ops::DerefMut;
     match *data_attrs.get_data_type() {
-        DataType::UINT8 => read_and_encode::<u8, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?,
+        DataType::UINT8 => {
+            read_and_encode::<u8, _, _>(&**n, &data_attrs, &spec, buffer.deref_mut())?
+        }
         DataType::UINT16 => {
-            read_and_encode::<u16, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?
+            read_and_encode::<u16, _, _>(&**n, &data_attrs, &spec, buffer.deref_mut())?
         }
         DataType::UINT32 => {
-            read_and_encode::<u32, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?
+            read_and_encode::<u32, _, _>(&**n, &data_attrs, &spec, buffer.deref_mut())?
         }
         DataType::UINT64 => {
-            read_and_encode::<u64, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?
+            read_and_encode::<u64, _, _>(&**n, &data_attrs, &spec, buffer.deref_mut())?
         }
         DataType::FLOAT32 => {
-            read_and_encode::<f32, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?
+            read_and_encode::<f32, _, _>(&**n, &data_attrs, &spec, buffer.deref_mut())?
         }
         DataType::FLOAT64 => {
-            read_and_encode::<f64, _, _>(&**n, &data_attrs, &spec, &mut tile_buffer)?
+            read_and_encode::<f64, _, _>(&**n, &data_attrs, &spec, buffer.deref_mut())?
         }
         _ => {
             return Ok(HttpResponse::NotImplemented()
@@ -206,14 +200,15 @@ fn tile<N: N5Reader>(
         }
     }
 
+    // Use `as_slice().to_vec()` rather than `.clone()` to allocate the smallest
+    // `Vec` possible.
+    let tile: Bytes = buffer.as_slice().to_vec().into();
     let content_type = spec.format.content_type();
     if let Some(cache) = &state.tile_cache {
-        cache.write().unwrap().insert(spec, tile_buffer.clone());
+        cache.write().unwrap().insert(spec, tile.clone());
     }
 
-    Ok(HttpResponse::Ok()
-        .content_type(content_type)
-        .body(tile_buffer))
+    Ok(HttpResponse::Ok().content_type(content_type).body(tile))
 }
 
 impl ResponseError for EncodingError {
@@ -284,11 +279,12 @@ struct Options {
     tile_cache_size: usize,
 }
 
-type TileCache = LruCache<TileImageSpec, Vec<u8>>;
+type TileCache = LruCache<TileImageSpec, Bytes>;
 
 struct AppState<N: N5Reader> {
     n5: Arc<N>,
-    max_tile_prealloc: usize,
+    // `RefCell` is fine because this state is per-thread.
+    tile_buffer: RefCell<Vec<u8>>,
     max_tile_size: TileSize,
     tile_cache: Option<Arc<RwLock<TileCache>>>,
 }
@@ -299,7 +295,7 @@ impl<N: N5Reader> Clone for AppState<N> {
     fn clone(&self) -> Self {
         AppState {
             n5: self.n5.clone(),
-            max_tile_prealloc: self.max_tile_prealloc,
+            tile_buffer: self.tile_buffer.clone(),
             max_tile_size: self.max_tile_size,
             tile_cache: self.tile_cache.clone(),
         }
@@ -357,7 +353,7 @@ fn main() -> std::io::Result<()> {
     if opt.ds_block_cache {
         let state = AppState {
             n5: Arc::new(N5CacheReader::wrap(n5, opt.ds_block_cache_size)),
-            max_tile_prealloc,
+            tile_buffer: RefCell::new(Vec::with_capacity(max_tile_prealloc)),
             max_tile_size,
             tile_cache,
         };
@@ -365,7 +361,7 @@ fn main() -> std::io::Result<()> {
     } else {
         let state = AppState {
             n5: Arc::new(n5),
-            max_tile_prealloc,
+            tile_buffer: RefCell::new(Vec::with_capacity(max_tile_prealloc)),
             max_tile_size,
             tile_cache,
         };
