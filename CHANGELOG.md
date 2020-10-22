@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+### Fixed
+- Fixed a soundness error in a dependency that caused a panic on Rust 1.48 and
+  greater (see
+  [this issue](https://github.com/contain-rs/linked-hash-map/pull/100)).
+
 ## [0.1.6] - 2020-07-18
 ### Fixed
 - Fixed a panic when a block's dataset-level bounds overlapped a tile request
