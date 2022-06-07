@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.8] - 2022-06-07
+### Change
+- Updates to dependencies for bug fixes.
+
 ## [0.1.7] - 2020-10-22
 ### Fixed
 - Fixed a soundness error in a dependency that caused a panic on Rust 1.48 and
