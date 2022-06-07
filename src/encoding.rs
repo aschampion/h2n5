@@ -74,7 +74,7 @@ impl FromStr for EncodingFormat {
 pub enum ChannelPacking {
     Gray,
     GrayA,
-    RGBA,
+    Rgba,
 }
 
 impl ChannelPacking {
@@ -82,7 +82,7 @@ impl ChannelPacking {
         match self {
             ChannelPacking::Gray => 1,
             ChannelPacking::GrayA => 2,
-            ChannelPacking::RGBA => 4,
+            ChannelPacking::Rgba => 4,
         }
     }
 }
@@ -100,7 +100,7 @@ impl FromStr for ChannelPacking {
         match s.to_lowercase().as_str() {
             "gray" => Ok(ChannelPacking::Gray),
             "graya" => Ok(ChannelPacking::GrayA),
-            "rgba" => Ok(ChannelPacking::RGBA),
+            "rgba" => Ok(ChannelPacking::Rgba),
             _ => Err(()),
         }
     }
@@ -150,12 +150,12 @@ where
                 8 => match spec.packing {
                     ChannelPacking::Gray => image::ColorType::L8,
                     ChannelPacking::GrayA => image::ColorType::La8,
-                    ChannelPacking::RGBA => image::ColorType::Rgba8,
+                    ChannelPacking::Rgba => image::ColorType::Rgba8,
                 },
                 16 => match spec.packing {
                     ChannelPacking::Gray => image::ColorType::L16,
                     ChannelPacking::GrayA => image::ColorType::La16,
-                    ChannelPacking::RGBA => image::ColorType::Rgba16,
+                    ChannelPacking::Rgba => image::ColorType::Rgba16,
                 },
                 _ => {
                     return Err(std::io::Error::new(

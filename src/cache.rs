@@ -194,14 +194,13 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
             self.reader
                 .read_block_into(path_name, data_attrs, grid_position.clone(), block)?;
         let ds_cache = &cache.blocks.read().unwrap()[path_name];
-        let maybe_block = match maybe {
-            Some(_) => Some(VecDataBlock::new(
+        let maybe_block = maybe.map(|_| {
+            VecDataBlock::new(
                 block.get_size().into(),
                 block.get_grid_position().into(),
                 block.get_data().into(),
-            )),
-            None => None,
-        };
+            )
+        });
         ds_cache.write().unwrap().insert(grid_position, maybe_block);
 
         Ok(maybe)
