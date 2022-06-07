@@ -7,7 +7,7 @@ H2N5 is:
 
 ## Minimum supported Rust version (MSRV)
 
-Stable 1.39
+Stable 1.42
 
 ## Quick start
 
