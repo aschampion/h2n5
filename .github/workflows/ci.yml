@@ -25,11 +25,14 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable, 1.39.0]
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ matrix.rust }}
+          profile: minimal
+          override: true
       - uses: Swatinem/rust-cache@v1
       - run: cargo build
       - run: cargo test -- --nocapture --quiet
