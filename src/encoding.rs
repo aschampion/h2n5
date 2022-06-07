@@ -1,6 +1,7 @@
 use std::io::Write;
 use std::str::FromStr;
 
+use image::ImageEncoder;
 use n5::{
     DatasetAttributes,
     N5Reader,
@@ -40,12 +41,13 @@ impl EncodingFormat {
     ) -> Result<(), image::ImageError> {
         match *self {
             EncodingFormat::Jpeg(ref p) => {
-                let mut encoder = image::jpeg::JpegEncoder::new_with_quality(writer, p.quality);
+                let mut encoder =
+                    image::codecs::jpeg::JpegEncoder::new_with_quality(writer, p.quality);
                 encoder.encode(bytes, width, height, image_color_type)
             }
             EncodingFormat::Png => {
-                let encoder = image::png::PngEncoder::new(writer);
-                encoder.encode(bytes, width, height, image_color_type)
+                let encoder = image::codecs::png::PngEncoder::new(writer);
+                encoder.write_image(bytes, width, height, image_color_type)
             }
         }
     }
