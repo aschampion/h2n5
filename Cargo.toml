@@ -35,3 +35,7 @@ features = ["jpeg", "png"]
 
 [profile.release]
 lto=true
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/h2n5-{ target }.tgz"
+bin-dir = "{ bin }-{ target }{ format }"
