@@ -40,11 +40,11 @@ impl EncodingFormat {
     ) -> Result<(), image::ImageError> {
         match *self {
             EncodingFormat::Jpeg(ref p) => {
-                let mut encoder = image::jpeg::JPEGEncoder::new_with_quality(writer, p.quality);
+                let mut encoder = image::jpeg::JpegEncoder::new_with_quality(writer, p.quality);
                 encoder.encode(bytes, width, height, image_color_type)
             }
             EncodingFormat::Png => {
-                let encoder = image::png::PNGEncoder::new(writer);
+                let encoder = image::png::PngEncoder::new(writer);
                 encoder.encode(bytes, width, height, image_color_type)
             }
         }
