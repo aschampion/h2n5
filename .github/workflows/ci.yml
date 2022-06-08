@@ -69,6 +69,7 @@ jobs:
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
