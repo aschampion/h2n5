@@ -34,7 +34,7 @@ jobs:
           profile: minimal
           override: true
       - uses: Swatinem/rust-cache@v1
-      - run: cargo build
+      - run: cargo build --tests
       - run: cargo test -- --nocapture --quiet
 
   publish:
