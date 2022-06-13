@@ -620,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "h2n5"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "actix-cors",
  "actix-web",
