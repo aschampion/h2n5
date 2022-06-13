@@ -156,7 +156,7 @@ async fn tile<N: N5Reader>(
         spec
     };
 
-    debug!("{spec:?}");
+    debug!("{spec:?}", spec = spec);
 
     if spec.tile.tile_size.w > state.max_tile_size.w
         || spec.tile.tile_size.h > state.max_tile_size.h
