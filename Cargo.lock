@@ -627,6 +627,7 @@ dependencies = [
  "anymap",
  "env_logger",
  "image",
+ "lazy_static",
  "lru-cache",
  "n5",
  "ndarray",

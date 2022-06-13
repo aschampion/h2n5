@@ -92,12 +92,15 @@ impl FromStr for TileImageSpec {
     type Err = TileImageSpecError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let re = regex::Regex::new(concat!(
-            r"^(?P<dataset>.*)/(?P<slicing>\d+_\d+(_\d+)?)/",
-            r"(?P<tile_size>\d+_\d+)(?P<coords>(/\d+)+)\.(?P<format>.+)$"
-        ))
-        .expect("Impossible: regex is valid");
-        let caps = re.captures(s).ok_or(TileImageSpecError::MalformedPath)?;
+        lazy_static::lazy_static! {
+                static ref RE: regex::Regex = regex::Regex::new(concat!(
+                r"^(?P<dataset>.*)/(?P<slicing>\d+_\d+(_\d+)?)/",
+                r"(?P<tile_size>\d+_\d+)(?P<coords>(/\d+)+)\.(?P<format>.+)$"
+            ))
+            .expect("Impossible: regex is valid");
+        }
+
+        let caps = RE.captures(s).ok_or(TileImageSpecError::MalformedPath)?;
 
         let n5_dataset = caps["dataset"].into();
         let mut sd_vals = caps["slicing"].split('_').map(u32::from_str);
