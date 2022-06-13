@@ -11,8 +11,12 @@ Stable 1.56
 
 ## Quick start
 
+Installation options:
+- Compile and install using cargo: `cargo install h2n5`
+- Download a precompiled binary from [the latest GitHub releases](https://github.com/aschampion/h2n5/releases/latest)
+- Install a precompiled binary using [cargo-binstall](https://github.com/ryankurte/cargo-binstall): `cargo binstall h2n5`
+
 ```
-cargo install h2n5
 h2n5 path/to/my.n5
 curl http://127.0.0.1:8088/tile/group/dataset/0_1/512_256/1/2/3.jpg?q=80
 ```
