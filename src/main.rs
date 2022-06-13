@@ -13,6 +13,7 @@ use actix_web::web::Bytes;
 use actix_web::web::Data;
 use actix_web::web::Query;
 use actix_web::*;
+use log::debug;
 use lru_cache::LruCache;
 use n5::filesystem::N5Filesystem;
 use n5::smallvec::SmallVec;
@@ -81,7 +82,7 @@ impl ResponseError for TileImageSpecError {
 }
 
 /// Specifies a tile to slice from a dataset and an image format to encode it.
-#[derive(PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct TileImageSpec {
     tile: TileSpec,
     format: EncodingFormat,
@@ -155,6 +156,8 @@ async fn tile<N: N5Reader>(
         spec
     };
 
+    debug!("{spec:?}");
+
     if spec.tile.tile_size.w > state.max_tile_size.w
         || spec.tile.tile_size.h > state.max_tile_size.h
     {
@@ -166,6 +169,7 @@ async fn tile<N: N5Reader>(
     if let Some(cache) = &state.tile_cache {
         let mut cache_lock = cache.write().unwrap();
         if let Some(tile) = cache_lock.get_mut(&spec) {
+            debug!("Tile cache hit");
             return Ok(HttpResponse::Ok()
                 .content_type(spec.format.content_type())
                 .body(tile.clone()));

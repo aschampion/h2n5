@@ -628,6 +628,7 @@ dependencies = [
  "env_logger",
  "image",
  "lazy_static",
+ "log",
  "lru-cache",
  "n5",
  "ndarray",

@@ -6,6 +6,7 @@ use anymap::{
     any::Any,
     Map,
 };
+use log::debug;
 use lru_cache::LruCache;
 use n5::prelude::*;
 use n5::{
@@ -134,6 +135,7 @@ impl<N: N5Reader> N5Reader for N5CacheReader<N> {
             let mut ds_block_cache = ds_cache.write().unwrap();
 
             if let Some(block) = ds_block_cache.get_mut(&grid_position[..]) {
+                debug!("Block cache hit: {path_name} {grid_position:?}");
                 return Ok(block.clone());
             }
         }
