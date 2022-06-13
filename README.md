@@ -1,4 +1,4 @@
-# H2N5 [![Build Status](https://travis-ci.org/aschampion/h2n5.svg?branch=master)](https://travis-ci.org/aschampion/h2n5)
+# H2N5 [![Build Status](https://github.com/aschampion/h2n5/actions/workflows/ci.yml/badge.svg)](https://github.com/aschampion/h2n5/actions/workflows/ci.yml/)
 
 H2N5 is:
 - ~~An Australian strain of avian flu~~
