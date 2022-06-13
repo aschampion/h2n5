@@ -1,0 +1,80 @@
+name: Distribute
+on:
+  workflow_call:
+    inputs:
+      proj_name:
+        required: true
+        type: string
+
+jobs:
+  dist:
+    name: dist (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            extension: .exe
+          - os: ubuntu-18.04
+            target: x86_64-unknown-linux-gnu
+            extension: ''
+          - os: ubuntu-18.04
+            target: x86_64-unknown-linux-musl
+            extension: ''
+          - os: ubuntu-18.04
+            target: aarch64-unknown-linux-gnu
+            extension: ''
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            extension: ''
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            extension: ''
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+
+      - name: Install musl
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: musl-tools # provides musl-gcc
+          version: 1.0
+
+      - name: Build release
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --target ${{ matrix.target }} --release
+
+      - name: Rename binary
+        env:
+          INPUT_BIN: ${{ inputs.proj_name }}${{ matrix.extension }}
+        run: |
+          cp target/${{ matrix.target }}/release/${{ env.INPUT_BIN }} ${{ env.INPUT_BIN }}-${{ matrix.target }}
+          tar -czvf ${{ inputs.proj_name }}-${{ matrix.target }}.tgz ${{ env.INPUT_BIN }}-${{ matrix.target }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v1
+        env:
+          INPUT_BIN: ${{ inputs.proj_name }}${{ matrix.extension }}
+        with:
+          name: ${{ env.INPUT_BIN }}-${{ matrix.target }}
+          path: ${{ env.INPUT_BIN }}-${{ matrix.target }}
+
+      - name: Upload binary to release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ inputs.proj_name }}-${{ matrix.target }}.tgz
+          asset_name: ${{ inputs.proj_name }}-${{ matrix.target }}.tgz
+          tag: ${{ github.ref }}
+          overwrite: true
