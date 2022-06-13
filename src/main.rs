@@ -8,6 +8,7 @@ use std::sync::{
 };
 
 use actix_cors::Cors;
+use actix_web::middleware::Condition;
 use actix_web::web::Bytes;
 use actix_web::web::Data;
 use actix_web::web::Query;
@@ -138,7 +139,7 @@ impl FromStr for TileImageSpec {
 }
 
 #[allow(unknown_lints)]
-fn tile<N: N5Reader>(
+async fn tile<N: N5Reader>(
     state: Data<AppState<N>>,
     req: HttpRequest,
     query: Query<HashMap<String, String>>,
@@ -302,41 +303,8 @@ impl<N: N5Reader> Clone for AppState<N> {
     }
 }
 
-mod actix_middleware_kludge {
-    use actix_service::{
-        IntoTransform,
-        Service,
-        Transform,
-    };
-    use actix_web::middleware::Condition;
-
-    // Kludge necessary to work around limitations of conditional
-    // actix middlewares.
-    // See: https://github.com/actix/actix-web/issues/934
-    pub(crate) struct WrapCondition<T> {
-        trans: T,
-        enable: bool,
-    }
-
-    impl<T> WrapCondition<T> {
-        pub fn new(enable: bool, trans: T) -> Self {
-            Self { trans, enable }
-        }
-    }
-
-    impl<S, T, Target> IntoTransform<Condition<Target>, S> for WrapCondition<T>
-    where
-        S: Service,
-        T: IntoTransform<Target, S>,
-        Target: Transform<S, Request = S::Request, Response = S::Response, Error = S::Error>,
-    {
-        fn into_transform(self) -> Condition<Target> {
-            Condition::new(self.enable, self.trans.into_transform())
-        }
-    }
-}
-
-fn main() -> std::io::Result<()> {
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
     let opt = Options::from_args();
     let root_path = opt.root_path.to_str().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidData, "Paths must be UTF-8")
@@ -357,7 +325,7 @@ fn main() -> std::io::Result<()> {
             max_tile_size,
             tile_cache,
         };
-        run_server(opt, state)
+        run_server(opt, state).await
     } else {
         let state = AppState {
             n5: Arc::new(n5),
@@ -365,11 +333,11 @@ fn main() -> std::io::Result<()> {
             max_tile_size,
             tile_cache,
         };
-        run_server(opt, state)
+        run_server(opt, state).await
     }
 }
 
-fn run_server<N: N5Reader + Send + Sync + 'static>(
+async fn run_server<N: N5Reader + Send + Sync + 'static>(
     opt: Options,
     state: AppState<N>,
 ) -> std::io::Result<()> {
@@ -377,24 +345,30 @@ fn run_server<N: N5Reader + Send + Sync + 'static>(
     env_logger::init();
 
     let mut server = HttpServer::new(move || {
-        use crate::actix_middleware_kludge::WrapCondition;
-
         App::new()
-            .data(state.clone())
+            .app_data(web::Data::new(state.clone()))
             .wrap(actix_web::middleware::Logger::default())
             .service(web::resource("/tile/{spec:.*}").route(web::get().to(tile::<N>)))
-            .wrap(WrapCondition::new(cors, Cors::new().send_wildcard()))
+            .wrap(Condition::new(cors, Cors::permissive()))
     })
     .bind((opt.bind_address, opt.port))?;
     if let Some(threads) = opt.threads {
         server = server.workers(threads);
     }
-    server.run()
+    server.run().await
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{
+        EncodingFormat,
+        JpegParameters,
+        SlicingDims,
+        TileImageSpec,
+        TileSize,
+    };
+    use n5::smallvec::SmallVec;
+    use std::str::FromStr;
 
     #[test]
     fn test_tile_spec_parsing() {

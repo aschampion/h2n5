@@ -15,11 +15,10 @@ keywords = ["n5"]
 categories = ["command-line-utilities", "science"]
 
 [dependencies]
-actix-web = "1.0.9"
-actix-service = "0.4"
-actix-cors = "0.1"
+actix-web = "4"
+actix-cors = "0.6"
 anymap = "0.12"
-env_logger = "0.7"
+env_logger = "0.9"
 lru-cache = "0.1.2"
 n5 = "0.7"
 ndarray = "0.13"
