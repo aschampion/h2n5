@@ -1,9 +1,6 @@
 name: CI
 on: [push, pull_request]
 
-env:
-  PROJ_NAME: h2n5
-
 jobs:
   test:
     uses: ./.github/workflows/test.yml
