@@ -5,6 +5,12 @@ on:
       proj_name:
         required: true
         type: string
+  workflow_dispatch:
+    inputs:
+      proj_name:
+        description: 'Binary artifact name to distribute'
+        required: true
+        type: string
 
 jobs:
   dist:
