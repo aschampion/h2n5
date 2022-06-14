@@ -58,16 +58,13 @@ jobs:
         env:
           INPUT_BIN: ${{ inputs.proj_name }}${{ matrix.extension }}
         run: |
-          cp target/${{ matrix.target }}/release/${{ env.INPUT_BIN }} ${{ env.INPUT_BIN }}-${{ matrix.target }}
-          tar -czvf ${{ inputs.proj_name }}-${{ matrix.target }}.tgz ${{ env.INPUT_BIN }}-${{ matrix.target }}
+          tar -czvf ${{ inputs.proj_name }}-${{ matrix.target }}.tgz target/${{ matrix.target }}/release/${{ env.INPUT_BIN }}
 
-      - name: Upload artifacts
+      - name: Upload artifacts  # This upload is useful for manually triggered, non-release runs.
         uses: actions/upload-artifact@v1
-        env:
-          INPUT_BIN: ${{ inputs.proj_name }}${{ matrix.extension }}
         with:
-          name: ${{ env.INPUT_BIN }}-${{ matrix.target }}
-          path: ${{ env.INPUT_BIN }}-${{ matrix.target }}
+          name: ${{ inputs.proj_name }}-${{ matrix.target }}.tgz
+          path: ${{ inputs.proj_name }}-${{ matrix.target }}.tgz
 
       - name: Upload binary to release
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
