@@ -3,18 +3,18 @@ on: [push, pull_request]
 
 jobs:
   test:
-    uses: ./.github/workflows/test.yml
+    uses: aschampion/gh-actions/.github/workflows/rust-test.yml@v0
     with:
       msrv: 1.56
 
   publish:
-    uses: ./.github/workflows/publish.yml
+    uses: aschampion/gh-actions/.github/workflows/rust-publish.yml@v0
     needs: [test]
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
     secrets: inherit
 
   dist:
-    uses: ./.github/workflows/dist.yml
+    uses: aschampion/gh-actions/.github/workflows/rust-dist.yml@v0
     needs: [publish]
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
     with:
