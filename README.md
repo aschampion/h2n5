@@ -67,6 +67,14 @@ RUST_LOG=info h2n5
 
 For more information, see the [`env_logger`](https://docs.rs/env_logger) and [`actix_web` logging middleware](https://actix.rs/docs/errors/) documentation.
 
+## Development
+
+Version bumping (including changelog release section versioning) is handled by [cargo-release](https://github.com/crate-ci/cargo-release), e.g.:
+
+```prompt
+cargo release --dev-version minor
+```
+
 ## License
 
 Licensed under either of
